@@ -1,15 +1,45 @@
 import glob
 import json
 import os
-from datetime import datetime, timedelta
+import re
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-# =================【1. 页面基本配置】=================
+# =================【1. 页面基本配置与时区设定】=================
 st.set_page_config(
-    page_title="出海多卡台数据中台", layout="wide", initial_sidebar_state="expanded"
+    page_title="出海多卡台数据中台",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
+
+# 强制定义北京时间 (UTC+8)
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+
+def get_display_file_time(file_path, raw_mtime):
+    """
+    智能解析时间：
+    1. 优先从卡台导出的文件名中正则提取真实导出时间 (如 2026-08-21 10_52_45)
+    2. 若提取失败，则取物理修改时间并强制转换为北京时间 (UTC+8)
+    """
+    if file_path:
+        filename = os.path.basename(file_path)
+        match = re.search(
+            r"(\d{4}[-_]\d{2}[-_]\d{2})[\s_]+(\d{2})[-_:](\d{2})[-_:](\d{2})",
+            filename,
+        )
+        if match:
+            date_part = match.group(1).replace("_", "-")
+            return f"{date_part} {match.group(2)}:{match.group(3)}:{match.group(4)}"
+
+    if raw_mtime > 0:
+        return datetime.fromtimestamp(raw_mtime, tz=BEIJING_TZ).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+    return "未知"
+
 
 # =================【全局高颜值 UI/CSS 注入】=================
 st.markdown(
@@ -308,7 +338,9 @@ def render_dashboard(platform_name, folder_path, fallback_file, dict_file):
         st.warning(f"⚠️ `{file_path}` 中暂无有效流水数据。")
         return
 
-    mtime_str = datetime.fromtimestamp(raw_mtime).strftime("%Y-%m-%d %H:%M:%S")
+    # 获取智能北京时间格式
+    mtime_str = get_display_file_time(file_path, raw_mtime)
+
     dict_status = (
         f"✅ 已关联 `{dict_file}`"
         if os.path.exists(dict_file)
