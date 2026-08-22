@@ -9,7 +9,7 @@ import streamlit as st
 
 # =================【1. 页面基本配置与时区设定】=================
 st.set_page_config(
-    page_title="出海多卡台数据看板 (公开版)",
+    page_title="Tim 卡台数据看板 (公开版)",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -99,13 +99,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# =================【卡台路由与专属字典配置】=================
+# =================【Tim 平台专用配置】=================
 PLATFORMS = {
-    "Forest": {
-        "folder": "Forest_Data",
-        "fallback_file": "Forest 清洗操作.xlsx",
-        "dict_file": "Forest字典.xlsx",
-    },
     "Tim": {
         "folder": "Tim_Data",
         "fallback_file": "Tim 清洗操作.xlsx",
@@ -116,7 +111,7 @@ PLATFORMS = {
 # =================【侧边栏控制面板 (含云端主动 Git Pull 引擎)】=================
 with st.sidebar:
     st.header("⚙️ 中台系统控制")
-    if st.button("🔄 立即同步所有卡台数据", use_container_width=True):
+    if st.button("🔄 立即同步 Tim 卡台数据", use_container_width=True):
         # 1. 强制云端服务器在后台执行 git pull 拉取 GitHub 最新推送的 Excel
         try:
             pull_res = subprocess.run(
@@ -127,7 +122,7 @@ with st.sidebar:
                 if pull_res.stdout
                 else pull_res.stderr.strip()
             )
-        except Exception as e:
+        except Exception:
             git_msg = "Git 自动拉取已跳过"
 
         # 2. 清除所有内存缓存与组件状态
@@ -139,7 +134,7 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("---")
-    st.caption("🛠️ 多卡台买量消耗大盘与流水对账系统")
+    st.caption("🛠️ Tim 买量消耗大盘与流水对账系统")
 
 
 # =================【通用工具与数据清洗引擎】=================
@@ -725,17 +720,8 @@ def render_dashboard(platform_name, folder_path, fallback_file, dict_file):
         st.info("当前筛选条件下暂无流水数据。")
 
 
-# =================【3. 页面主入口】=================
-tab1, tab2 = st.tabs(["🌲 Forest 清洗操作", "⚡ Tim 清洗操作"])
-
-with tab1:
-    cfg = PLATFORMS["Forest"]
-    render_dashboard(
-        "Forest", cfg["folder"], cfg["fallback_file"], cfg["dict_file"]
-    )
-
-with tab2:
-    cfg = PLATFORMS["Tim"]
-    render_dashboard(
-        "Tim", cfg["folder"], cfg["fallback_file"], cfg["dict_file"]
-    )
+# =================【3. 页面主入口 (直接渲染 Tim)】=================
+cfg = PLATFORMS["Tim"]
+render_dashboard(
+    "Tim", cfg["folder"], cfg["fallback_file"], cfg["dict_file"]
+)
