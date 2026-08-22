@@ -112,7 +112,6 @@ PLATFORMS = {
 with st.sidebar:
     st.header("⚙️ 中台系统控制")
     if st.button("🔄 立即同步 Tim 卡台数据", use_container_width=True):
-        # 1. 强制云端服务器在后台执行 git pull 拉取 GitHub 最新推送的 Excel
         try:
             pull_res = subprocess.run(
                 ["git", "pull"], capture_output=True, text=True, timeout=15
@@ -125,7 +124,6 @@ with st.sidebar:
         except Exception:
             git_msg = "Git 自动拉取已跳过"
 
-        # 2. 清除所有内存缓存与组件状态
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
             del st.session_state[key]
@@ -259,469 +257,538 @@ def load_and_clean_raw_cached(
     return df_raw
 
 
-# =================【看板核心渲染函数 (公开精简版)】=================
-def render_dashboard(platform_name, folder_path, fallback_file, dict_file):
-    file_path = get_latest_excel_path(folder_path, fallback_file)
+# =================【主页面渲染】=================
+cfg = PLATFORMS["Tim"]
+file_path = get_latest_excel_path(cfg["folder"], cfg["fallback_file"])
 
-    if not file_path or not os.path.exists(file_path):
-        st.error(
-            f"❌ 未在 `{folder_path}/` 找到任何 `.xlsx` 文件，且未找到备用文件 `{fallback_file}`。"
-        )
-        return
-
-    raw_mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0
-    dict_mtime = (
-        os.path.getmtime(dict_file) if os.path.exists(dict_file) else 0
+if not file_path or not os.path.exists(file_path):
+    st.error(
+        f"❌ 未在 `{cfg['folder']}/` 找到任何 `.xlsx` 文件，且未找到备用文件 `{cfg['fallback_file']}`。"
     )
+    st.stop()
 
-    df_raw = load_and_clean_raw_cached(
-        file_path, dict_file, raw_mtime, dict_mtime
-    )
+raw_mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0
+dict_mtime = (
+    os.path.getmtime(cfg["dict_file"])
+    if os.path.exists(cfg["dict_file"])
+    else 0
+)
 
-    if df_raw.empty:
-        st.warning(f"⚠️ `{file_path}` 中暂无有效流水数据。")
-        return
+df_raw = load_and_clean_raw_cached(
+    file_path, cfg["dict_file"], raw_mtime, dict_mtime
+)
 
-    mtime_str = get_display_file_time(file_path, raw_mtime)
-    dict_status = (
-        f"✅ 已关联 `{dict_file}`"
-        if os.path.exists(dict_file)
-        else f"⚠️ 未找到 `{dict_file}` (显示为未分配)"
-    )
+if df_raw.empty:
+    st.warning(f"⚠️ `{file_path}` 中暂无有效流水数据。")
+    st.stop()
 
-    st.caption(
-        f"📁 实时载入流水: `{file_path}` ｜ 🕒 生成时间: **{mtime_str}** ｜ 📖 字典状态: {dict_status} ｜ ⚡ 内存缓存已激活"
-    )
+mtime_str = get_display_file_time(file_path, raw_mtime)
+dict_status = (
+    f"✅ 已关联 `{cfg['dict_file']}`"
+    if os.path.exists(cfg["dict_file"])
+    else f"⚠️ 未找到 `{cfg['dict_file']}` (显示为未分配)"
+)
 
-    # ----------------------------------------------------
-    # 板块 1：中部趋势图表（柱状图 + 环形饼图）
-    # ----------------------------------------------------
-    chart1, chart2 = st.columns(2)
-    with chart1:
-        if (
-            "交易日期" in df_raw.columns
-            and "交易金额" in df_raw.columns
-            and not df_raw.empty
-        ):
-            daily_data = (
-                df_raw.groupby(["交易日期", "交易状态"])["交易金额"]
-                .sum()
-                .reset_index()
-            )
-            fig_trend = px.bar(
-                daily_data,
-                x="交易日期",
-                y="交易金额",
-                color="交易状态",
-                title=f"📅 {platform_name} - 每日消耗与状态趋势",
-                barmode="stack",
-                template="plotly_white",
-                color_discrete_map={
-                    "PENDING": "#2563eb",
-                    "COMPLETE": "#10b981",
-                    "REVERSED": "#f59e0b",
-                    "FAILED": "#ef4444",
-                },
-            )
-            fig_trend.update_layout(
-                font_family="-apple-system, BlinkMacSystemFont, Segoe UI",
-                title_font_size=15,
-                legend_title_text="",
-                margin=dict(l=10, r=10, t=40, b=10),
-                hovermode="x unified",
-            )
-            st.plotly_chart(fig_trend, use_container_width=True)
+st.caption(
+    f"📁 实时载入流水: `{file_path}` ｜ 🕒 生成时间: **{mtime_str}** ｜ 📖 字典状态: {dict_status} ｜ ⚡ 内存缓存已激活"
+)
 
-    with chart2:
-        if (
-            "UA名字" in df_raw.columns
-            and "交易金额" in df_raw.columns
-            and not df_raw.empty
-        ):
-            df_pending_chart = (
-                df_raw[df_raw["交易状态"] == "PENDING"]
-                if "交易状态" in df_raw.columns
-                else df_raw
-            )
-            ua_data = (
-                df_pending_chart.groupby("UA名字")["交易金额"]
-                .sum()
-                .reset_index()
-                .sort_values(by="交易金额", ascending=False)
-            )
-            fig_ua = px.pie(
-                ua_data,
-                names="UA名字",
-                values="交易金额",
-                title=f"🎯 {platform_name} - 投放团队 PENDING 消耗占比",
-                hole=0.45,
-                template="plotly_white",
-                color_discrete_sequence=px.colors.qualitative.Pastel,
-            )
-            fig_ua.update_traces(
-                textposition="inside", textinfo="percent+label"
-            )
-            fig_ua.update_layout(
-                font_family="-apple-system, BlinkMacSystemFont, Segoe UI",
-                title_font_size=15,
-                margin=dict(l=10, r=10, t=40, b=10),
-            )
-            st.plotly_chart(fig_ua, use_container_width=True)
+# ----------------------------------------------------
+# 板块 0：【Tim】主筛选条件（展开/折叠框）
+# ----------------------------------------------------
+with st.expander("🔍 展开 / 折叠【Tim】主筛选条件", expanded=True):
+    f_col1, f_col2, f_col3 = st.columns([1.2, 1.2, 1.6])
 
-    st.markdown("---")
-
-    # ----------------------------------------------------
-    # 板块 2：单卡每日消耗透视 (仅统计 PENDING)
-    # ----------------------------------------------------
-    st.subheader(f"💳 {platform_name} 单卡每日消耗透视 (仅统计 PENDING)")
-
-    df_pending = (
-        df_raw[df_raw["交易状态"] == "PENDING"]
-        if "交易状态" in df_raw.columns
-        else df_raw
-    )
-
-    if (
-        "卡号" in df_pending.columns
-        and "交易日期" in df_pending.columns
-        and "交易金额" in df_pending.columns
-        and not df_pending.empty
-    ):
-        p_col1, p_col2, p_col3 = st.columns(3)
-
-        with p_col1:
-            card_options = sorted(list(df_pending["卡号"].dropna().unique()))
-            selected_cards = st.multiselect(
-                "💳 筛选卡号",
-                options=card_options,
-                default=[],
-                placeholder="支持搜索/勾选卡号（留空全选）",
-                key=f"pivot_card_{platform_name}",
-            )
-
-        with p_col2:
-            if "UA名字" in df_pending.columns:
-                pivot_ua_options = sorted(
-                    [
-                        str(x)
-                        for x in df_pending["UA名字"].dropna().unique()
-                        if str(x).strip()
-                    ]
-                )
-                selected_pivot_ua = st.multiselect(
-                    "👤 筛选 UA",
-                    options=pivot_ua_options,
-                    default=[],
-                    placeholder="按 UA 筛选（留空全选）",
-                    key=f"pivot_ua_{platform_name}",
-                )
-            else:
-                selected_pivot_ua = []
-
-        with p_col3:
-            p_min_date = df_pending["交易日期"].min()
-            p_max_date = df_pending["交易日期"].max()
-            selected_pivot_date_range = st.date_input(
+    with f_col1:
+        if "交易日期" in df_raw.columns and not df_raw["交易日期"].dropna().empty:
+            m_min_date = df_raw["交易日期"].min()
+            m_max_date = df_raw["交易日期"].max()
+            main_date_range = st.date_input(
                 "📅 交易日期范围",
-                value=(p_min_date, p_max_date)
-                if (p_min_date and p_max_date)
+                value=(m_min_date, m_max_date)
+                if (m_min_date and m_max_date)
                 else datetime.now().date(),
-                min_value=p_min_date,
-                max_value=p_max_date,
-                key=f"pivot_date_range_{platform_name}",
+                min_value=m_min_date,
+                max_value=m_max_date,
+                key="main_date_range_tim",
             )
+        else:
+            main_date_range = None
 
-        df_pivot_filtered = df_pending.copy()
-        if selected_cards:
-            df_pivot_filtered = df_pivot_filtered[
-                df_pivot_filtered["卡号"].isin(selected_cards)
-            ]
-        if selected_pivot_ua and "UA名字" in df_pivot_filtered.columns:
-            df_pivot_filtered = df_pivot_filtered[
-                df_pivot_filtered["UA名字"].isin(selected_pivot_ua)
-            ]
-        if (
-            isinstance(selected_pivot_date_range, (tuple, list))
-            and len(selected_pivot_date_range) == 2
-        ):
-            df_pivot_filtered = df_pivot_filtered[
-                (
-                    df_pivot_filtered["交易日期"]
-                    >= selected_pivot_date_range[0]
-                )
-                & (
-                    df_pivot_filtered["交易日期"]
-                    <= selected_pivot_date_range[1]
-                )
-            ]
-        elif (
-            isinstance(selected_pivot_date_range, (tuple, list))
-            and len(selected_pivot_date_range) == 1
-        ):
-            df_pivot_filtered = df_pivot_filtered[
-                df_pivot_filtered["交易日期"] == selected_pivot_date_range[0]
-            ]
-
-        if not df_pivot_filtered.empty:
-            sum_spend = df_pivot_filtered["交易金额"].sum()
-            sum_cards = df_pivot_filtered["卡号"].nunique()
-            sum_tx = len(df_pivot_filtered)
-
-            # 3 列 Metric 指标卡
-            s_c1, s_c2, s_c3 = st.columns(3)
-            with s_c1:
-                st.metric("💰 当前筛选总消耗 (SUM)", f"${sum_spend:,.2f}")
-            with s_c2:
-                st.metric("💳 涉及活跃卡号数", f"{sum_cards} 张")
-            with s_c3:
-                st.metric("📝 累计扣费总笔数", f"{sum_tx} 笔")
-
-            view_tab1, view_tab2, view_tab3 = st.tabs(
+    with f_col2:
+        if "UA名字" in df_raw.columns:
+            main_ua_options = sorted(
                 [
-                    "📋 单卡每日消耗明细表",
-                    "👥 UA 每日汇总表 (SUM)",
-                    "📊 卡号 × 日期 透视大表 (Pivot)",
+                    str(x)
+                    for x in df_raw["UA名字"].dropna().unique()
+                    if str(x).strip()
                 ]
             )
+            selected_main_ua = st.multiselect(
+                "👤 UA 名字",
+                options=main_ua_options,
+                default=[],
+                placeholder="留空默认展示所有人",
+                key="main_ua_tim",
+            )
+        else:
+            selected_main_ua = []
 
-            # Tab 1: 单卡明细（含置顶合计行）
-            with view_tab1:
-                group_cols = ["卡号", "交易日期"]
-                if "UA名字" in df_pivot_filtered.columns:
-                    group_cols.insert(1, "UA名字")
+    with f_col3:
+        if "交易状态" in df_raw.columns:
+            main_status_options = sorted(
+                list(df_raw["交易状态"].dropna().unique())
+            )
+            selected_main_status = st.multiselect(
+                "📌 交易状态",
+                options=main_status_options,
+                default=main_status_options,
+                key="main_status_tim",
+            )
+        else:
+            selected_main_status = []
 
-                card_daily_df = (
-                    df_pivot_filtered.groupby(group_cols)
-                    .agg(
-                        当日总消耗=("交易金额", "sum"),
-                        交易笔数=("交易金额", "count"),
-                    )
-                    .reset_index()
+# 应用主筛选条件到大盘主视图
+df_main_filtered = df_raw.copy()
+if (
+    main_date_range
+    and isinstance(main_date_range, (tuple, list))
+    and len(main_date_range) == 2
+):
+    df_main_filtered = df_main_filtered[
+        (df_main_filtered["交易日期"] >= main_date_range[0])
+        & (df_main_filtered["交易日期"] <= main_date_range[1])
+    ]
+elif (
+    main_date_range
+    and isinstance(main_date_range, (tuple, list))
+    and len(main_date_range) == 1
+):
+    df_main_filtered = df_main_filtered[
+        df_main_filtered["交易日期"] == main_date_range[0]
+    ]
+
+if selected_main_ua and "UA名字" in df_main_filtered.columns:
+    df_main_filtered = df_main_filtered[
+        df_main_filtered["UA名字"].isin(selected_main_ua)
+    ]
+
+if selected_main_status and "交易状态" in df_main_filtered.columns:
+    df_main_filtered = df_main_filtered[
+        df_main_filtered["交易状态"].isin(selected_main_status)
+    ]
+
+# ----------------------------------------------------
+# 板块 1：中部趋势图表（柱状图 + 环形饼图）
+# ----------------------------------------------------
+chart1, chart2 = st.columns(2)
+with chart1:
+    if (
+        "交易日期" in df_main_filtered.columns
+        and "交易金额" in df_main_filtered.columns
+        and not df_main_filtered.empty
+    ):
+        daily_data = (
+            df_main_filtered.groupby(["交易日期", "交易状态"])["交易金额"]
+            .sum()
+            .reset_index()
+        )
+        fig_trend = px.bar(
+            daily_data,
+            x="交易日期",
+            y="交易金额",
+            color="交易状态",
+            title="📅 Tim - 每日消耗与状态趋势",
+            barmode="stack",
+            template="plotly_white",
+            color_discrete_map={
+                "PENDING": "#2563eb",
+                "COMPLETE": "#10b981",
+                "REVERSED": "#f59e0b",
+                "DECLINED": "#ef4444",
+                "FAILED": "#ef4444",
+            },
+        )
+        fig_trend.update_layout(
+            font_family="-apple-system, BlinkMacSystemFont, Segoe UI",
+            title_font_size=15,
+            legend_title_text="",
+            margin=dict(l=10, r=10, t=40, b=10),
+            hovermode="x unified",
+        )
+        st.plotly_chart(fig_trend, use_container_width=True)
+
+with chart2:
+    if (
+        "UA名字" in df_main_filtered.columns
+        and "交易金额" in df_main_filtered.columns
+        and not df_main_filtered.empty
+    ):
+        df_pending_chart = (
+            df_main_filtered[df_main_filtered["交易状态"] == "PENDING"]
+            if "交易状态" in df_main_filtered.columns
+            else df_main_filtered
+        )
+        ua_data = (
+            df_pending_chart.groupby("UA名字")["交易金额"]
+            .sum()
+            .reset_index()
+            .sort_values(by="交易金额", ascending=False)
+        )
+        fig_ua = px.pie(
+            ua_data,
+            names="UA名字",
+            values="交易金额",
+            title="🎯 Tim - 投放团队 PENDING 消耗占比",
+            hole=0.45,
+            template="plotly_white",
+            color_discrete_sequence=px.colors.qualitative.Pastel,
+        )
+        fig_ua.update_traces(textposition="inside", textinfo="percent+label")
+        fig_ua.update_layout(
+            font_family="-apple-system, BlinkMacSystemFont, Segoe UI",
+            title_font_size=15,
+            margin=dict(l=10, r=10, t=40, b=10),
+        )
+        st.plotly_chart(fig_ua, use_container_width=True)
+
+st.markdown("---")
+
+# ----------------------------------------------------
+# 板块 2：单卡每日消耗透视 (仅统计 PENDING)
+# ----------------------------------------------------
+st.subheader("💳 Tim 单卡每日消耗透视 (仅统计 PENDING)")
+
+df_pending = (
+    df_raw[df_raw["交易状态"] == "PENDING"]
+    if "交易状态" in df_raw.columns
+    else df_raw
+)
+
+if (
+    "卡号" in df_pending.columns
+    and "交易日期" in df_pending.columns
+    and "交易金额" in df_pending.columns
+    and not df_pending.empty
+):
+    p_col1, p_col2, p_col3 = st.columns(3)
+
+    with p_col1:
+        card_options = sorted(list(df_pending["卡号"].dropna().unique()))
+        selected_cards = st.multiselect(
+            "💳 筛选卡号",
+            options=card_options,
+            default=[],
+            placeholder="支持搜索/勾选卡号（留空全选）",
+            key="pivot_card_tim",
+        )
+
+    with p_col2:
+        if "UA名字" in df_pending.columns:
+            pivot_ua_options = sorted(
+                [
+                    str(x)
+                    for x in df_pending["UA名字"].dropna().unique()
+                    if str(x).strip()
+                ]
+            )
+            selected_pivot_ua = st.multiselect(
+                "👤 筛选 UA",
+                options=pivot_ua_options,
+                default=[],
+                placeholder="按 UA 筛选（留空全选）",
+                key="pivot_ua_tim",
+            )
+        else:
+            selected_pivot_ua = []
+
+    with p_col3:
+        p_min_date = df_pending["交易日期"].min()
+        p_max_date = df_pending["交易日期"].max()
+        selected_pivot_date_range = st.date_input(
+            "📅 交易日期范围",
+            value=(p_min_date, p_max_date)
+            if (p_min_date and p_max_date)
+            else datetime.now().date(),
+            min_value=p_min_date,
+            max_value=p_max_date,
+            key="pivot_date_range_tim",
+        )
+
+    df_pivot_filtered = df_pending.copy()
+    if selected_cards:
+        df_pivot_filtered = df_pivot_filtered[
+            df_pivot_filtered["卡号"].isin(selected_cards)
+        ]
+    if selected_pivot_ua and "UA名字" in df_pivot_filtered.columns:
+        df_pivot_filtered = df_pivot_filtered[
+            df_pivot_filtered["UA名字"].isin(selected_pivot_ua)
+        ]
+    if (
+        isinstance(selected_pivot_date_range, (tuple, list))
+        and len(selected_pivot_date_range) == 2
+    ):
+        df_pivot_filtered = df_pivot_filtered[
+            (df_pivot_filtered["交易日期"] >= selected_pivot_date_range[0])
+            & (df_pivot_filtered["交易日期"] <= selected_pivot_date_range[1])
+        ]
+    elif (
+        isinstance(selected_pivot_date_range, (tuple, list))
+        and len(selected_pivot_date_range) == 1
+    ):
+        df_pivot_filtered = df_pivot_filtered[
+            df_pivot_filtered["交易日期"] == selected_pivot_date_range[0]
+        ]
+
+    if not df_pivot_filtered.empty:
+        sum_spend = df_pivot_filtered["交易金额"].sum()
+        sum_cards = df_pivot_filtered["卡号"].nunique()
+        sum_tx = len(df_pivot_filtered)
+
+        s_c1, s_c2, s_c3 = st.columns(3)
+        with s_c1:
+            st.metric("💰 当前筛选总消耗 (SUM)", f"${sum_spend:,.2f}")
+        with s_c2:
+            st.metric("💳 涉及活跃卡号数", f"{sum_cards} 张")
+        with s_c3:
+            st.metric("📝 累计扣费总笔数", f"{sum_tx} 笔")
+
+        view_tab1, view_tab2, view_tab3 = st.tabs(
+            [
+                "📋 单卡每日消耗明细表",
+                "👥 UA 每日汇总表 (SUM)",
+                "📊 卡号 × 日期 透视大表 (Pivot)",
+            ]
+        )
+
+        with view_tab1:
+            group_cols = ["卡号", "交易日期"]
+            if "UA名字" in df_pivot_filtered.columns:
+                group_cols.insert(1, "UA名字")
+
+            card_daily_df = (
+                df_pivot_filtered.groupby(group_cols)
+                .agg(
+                    当日总消耗=("交易金额", "sum"),
+                    交易笔数=("交易金额", "count"),
                 )
-                card_daily_df = card_daily_df.sort_values(
-                    by=["交易日期", "当日总消耗"], ascending=[False, False]
-                )
+                .reset_index()
+            )
+            card_daily_df = card_daily_df.sort_values(
+                by=["交易日期", "当日总消耗"], ascending=[False, False]
+            )
 
-                top_sum_dict = {
-                    "卡号": "🔥 【当前筛选合计 SUM】",
-                    "当日总消耗": sum_spend,
-                    "交易笔数": sum_tx,
-                }
-                if "UA名字" in df_pivot_filtered.columns:
-                    top_sum_dict["UA名字"] = (
-                        selected_pivot_ua[0]
-                        if len(selected_pivot_ua) == 1
-                        else f"共 {df_pivot_filtered['UA名字'].nunique()} 人"
-                    )
-                if "交易日期" in df_pivot_filtered.columns:
+            top_sum_dict = {
+                "卡号": "🔥 【当前筛选合计 SUM】",
+                "当日总消耗": sum_spend,
+                "交易笔数": sum_tx,
+            }
+            if "UA名字" in df_pivot_filtered.columns:
+                top_sum_dict["UA名字"] = (
+                    selected_pivot_ua[0]
+                    if len(selected_pivot_ua) == 1
+                    else f"共 {df_pivot_filtered['UA名字'].nunique()} 人"
+                )
+            if "交易日期" in df_pivot_filtered.columns:
+                if (
+                    isinstance(selected_pivot_date_range, (tuple, list))
+                    and len(selected_pivot_date_range) == 2
+                ):
                     if (
-                        isinstance(selected_pivot_date_range, (tuple, list))
-                        and len(selected_pivot_date_range) == 2
+                        selected_pivot_date_range[0]
+                        == selected_pivot_date_range[1]
                     ):
-                        if (
+                        top_sum_dict["交易日期"] = str(
                             selected_pivot_date_range[0]
-                            == selected_pivot_date_range[1]
-                        ):
-                            top_sum_dict["交易日期"] = str(
-                                selected_pivot_date_range[0]
-                            )
-                        else:
-                            top_sum_dict["交易日期"] = (
-                                f"{selected_pivot_date_range[0]} ~ {selected_pivot_date_range[1]}"
-                            )
+                        )
                     else:
                         top_sum_dict["交易日期"] = (
-                            f"共 {df_pivot_filtered['交易日期'].nunique()} 天"
+                            f"{selected_pivot_date_range[0]} ~ {selected_pivot_date_range[1]}"
                         )
+                else:
+                    top_sum_dict["交易日期"] = (
+                        f"共 {df_pivot_filtered['交易日期'].nunique()} 天"
+                    )
 
-                card_daily_display = pd.concat(
-                    [pd.DataFrame([top_sum_dict]), card_daily_df],
-                    ignore_index=True,
+            card_daily_display = pd.concat(
+                [pd.DataFrame([top_sum_dict]), card_daily_df],
+                ignore_index=True,
+            )
+
+            st.dataframe(
+                card_daily_display,
+                column_config={
+                    "当日总消耗": st.column_config.NumberColumn(
+                        "当日总消耗 (PENDING)", format="$%.2f"
+                    ),
+                    "交易笔数": st.column_config.NumberColumn(
+                        "交易笔数", format="%d 笔"
+                    ),
+                },
+                hide_index=True,
+                use_container_width=True,
+            )
+
+        with view_tab2:
+            if "UA名字" in df_pivot_filtered.columns:
+                ua_daily_df = (
+                    df_pivot_filtered.groupby(["UA名字", "交易日期"])
+                    .agg(
+                        当日UA总消耗=("交易金额", "sum"),
+                        消耗卡数=("卡号", "nunique"),
+                        扣费笔数=("交易金额", "count"),
+                    )
+                    .reset_index()
+                    .sort_values(
+                        by=["交易日期", "当日UA总消耗"],
+                        ascending=[False, False],
+                    )
                 )
-
                 st.dataframe(
-                    card_daily_display,
+                    ua_daily_df,
                     column_config={
-                        "当日总消耗": st.column_config.NumberColumn(
-                            "当日总消耗 (PENDING)", format="$%.2f"
+                        "当日UA总消耗": st.column_config.NumberColumn(
+                            "当日 UA 总消耗 (SUM)", format="$%.2f"
                         ),
-                        "交易笔数": st.column_config.NumberColumn(
-                            "交易笔数", format="%d 笔"
+                        "消耗卡数": st.column_config.NumberColumn(
+                            "消耗卡数", format="%d 张"
+                        ),
+                        "扣费笔数": st.column_config.NumberColumn(
+                            "扣费总笔数", format="%d 笔"
                         ),
                     },
                     hide_index=True,
                     use_container_width=True,
                 )
-
-            # Tab 2: UA 每日汇总表 (按 UA + 交易日期 求和)
-            with view_tab2:
-                if "UA名字" in df_pivot_filtered.columns:
-                    ua_daily_df = (
-                        df_pivot_filtered.groupby(["UA名字", "交易日期"])
-                        .agg(
-                            当日UA总消耗=("交易金额", "sum"),
-                            消耗卡数=("卡号", "nunique"),
-                            扣费笔数=("交易金额", "count"),
-                        )
-                        .reset_index()
-                        .sort_values(
-                            by=["交易日期", "当日UA总消耗"],
-                            ascending=[False, False],
-                        )
-                    )
-                    st.dataframe(
-                        ua_daily_df,
-                        column_config={
-                            "当日UA总消耗": st.column_config.NumberColumn(
-                                "当日 UA 总消耗 (SUM)", format="$%.2f"
-                            ),
-                            "消耗卡数": st.column_config.NumberColumn(
-                                "消耗卡数", format="%d 张"
-                            ),
-                            "扣费笔数": st.column_config.NumberColumn(
-                                "扣费总笔数", format="%d 笔"
-                            ),
-                        },
-                        hide_index=True,
-                        use_container_width=True,
-                    )
-                else:
-                    st.info("💡 当前数据源无 UA 归属信息。")
-
-            # Tab 3: Pivot 透视大表 (卡号 x 日期)
-            with view_tab3:
-                pivot_index = (
-                    ["卡号", "UA名字"]
-                    if "UA名字" in df_pivot_filtered.columns
-                    else ["卡号"]
-                )
-                pivot_df = df_pivot_filtered.pivot_table(
-                    index=pivot_index,
-                    columns="交易日期",
-                    values="交易金额",
-                    aggfunc="sum",
-                    fill_value=0,
-                )
-                pivot_df["期间总消耗"] = pivot_df.sum(axis=1)
-                pivot_df = pivot_df.sort_values(
-                    by="期间总消耗", ascending=False
-                )
-
-                pivot_display = pivot_df.map(
-                    lambda x: f"${x:,.2f}"
-                    if isinstance(x, (int, float))
-                    else x
-                )
-                st.dataframe(pivot_display, use_container_width=True)
-        else:
-            st.info("💡 筛选条件下未找到匹配的 PENDING 流水。")
-    else:
-        st.info("当前所选筛选条件下暂无 PENDING 交易数据。")
-
-    st.markdown("---")
-
-    # ----------------------------------------------------
-    # 板块 3：全量明细流水对账
-    # ----------------------------------------------------
-    st.subheader(f"📋 {platform_name} 全量流水对账")
-
-    if not df_raw.empty:
-        r_col1, r_col2, r_col3 = st.columns(3)
-
-        with r_col1:
-            raw_card_options = (
-                sorted(list(df_raw["卡号"].dropna().unique()))
-                if "卡号" in df_raw.columns
-                else []
-            )
-            selected_raw_cards = st.multiselect(
-                "💳 筛选卡号",
-                options=raw_card_options,
-                default=[],
-                placeholder="支持搜索/勾选卡号（留空全选）",
-                key=f"raw_card_{platform_name}",
-            )
-
-        with r_col2:
-            raw_ua_options = (
-                sorted(
-                    [
-                        str(x)
-                        for x in df_raw["UA名字"].dropna().unique()
-                        if str(x).strip()
-                    ]
-                )
-                if "UA名字" in df_raw.columns
-                else []
-            )
-            selected_raw_ua = st.multiselect(
-                "👤 筛选 UA",
-                options=raw_ua_options,
-                default=[],
-                placeholder="按 UA 筛选（留空全选）",
-                key=f"raw_ua_{platform_name}",
-            )
-
-        with r_col3:
-            if "交易日期" in df_raw.columns and not df_raw["交易日期"].dropna().empty:
-                r_min_date = df_raw["交易日期"].min()
-                r_max_date = df_raw["交易日期"].max()
-                selected_raw_date_range = st.date_input(
-                    "📅 交易日期范围",
-                    value=(r_min_date, r_max_date)
-                    if (r_min_date and r_max_date)
-                    else datetime.now().date(),
-                    min_value=r_min_date,
-                    max_value=r_max_date,
-                    key=f"raw_date_range_{platform_name}",
-                )
             else:
-                selected_raw_date_range = None
+                st.info("💡 当前数据源无 UA 归属信息。")
 
-        df_raw_filtered = df_raw.copy()
-        if selected_raw_cards and "卡号" in df_raw_filtered.columns:
-            df_raw_filtered = df_raw_filtered[
-                df_raw_filtered["卡号"].isin(selected_raw_cards)
-            ]
-        if selected_raw_ua and "UA名字" in df_raw_filtered.columns:
-            df_raw_filtered = df_raw_filtered[
-                df_raw_filtered["UA名字"].isin(selected_raw_ua)
-            ]
-        if (
-            selected_raw_date_range
-            and isinstance(selected_raw_date_range, (tuple, list))
-            and len(selected_raw_date_range) == 2
-        ):
-            df_raw_filtered = df_raw_filtered[
-                (df_raw_filtered["交易日期"] >= selected_raw_date_range[0])
-                & (df_raw_filtered["交易日期"] <= selected_raw_date_range[1])
-            ]
-        elif (
-            selected_raw_date_range
-            and isinstance(selected_raw_date_range, (tuple, list))
-            and len(selected_raw_date_range) == 1
-        ):
-            df_raw_filtered = df_raw_filtered[
-                df_raw_filtered["交易日期"] == selected_raw_date_range[0]
-            ]
-
-        col_custom_cfg = {}
-        if "交易金额" in df_raw_filtered.columns:
-            col_custom_cfg["交易金额"] = st.column_config.NumberColumn(
-                "交易金额", format="$%.2f"
+        with view_tab3:
+            pivot_index = (
+                ["卡号", "UA名字"]
+                if "UA名字" in df_pivot_filtered.columns
+                else ["卡号"]
+            )
+            pivot_df = df_pivot_filtered.pivot_table(
+                index=pivot_index,
+                columns="交易日期",
+                values="交易金额",
+                aggfunc="sum",
+                fill_value=0,
+            )
+            pivot_df["期间总消耗"] = pivot_df.sum(axis=1)
+            pivot_df = pivot_df.sort_values(
+                by="期间总消耗", ascending=False
             )
 
-        st.dataframe(
-            df_raw_filtered,
-            column_config=col_custom_cfg,
-            use_container_width=True,
-        )
+            pivot_display = pivot_df.map(
+                lambda x: f"${x:,.2f}"
+                if isinstance(x, (int, float))
+                else x
+            )
+            st.dataframe(pivot_display, use_container_width=True)
     else:
-        st.info("当前筛选条件下暂无流水数据。")
+        st.info("💡 筛选条件下未找到匹配的 PENDING 流水。")
+else:
+    st.info("当前所选筛选条件下暂无 PENDING 交易数据。")
 
+st.markdown("---")
 
-# =================【3. 页面主入口 (直接渲染 Tim)】=================
-cfg = PLATFORMS["Tim"]
-render_dashboard(
-    "Tim", cfg["folder"], cfg["fallback_file"], cfg["dict_file"]
-)
+# ----------------------------------------------------
+# 板块 3：全量明细流水对账
+# ----------------------------------------------------
+st.subheader("📋 Tim 全量流水对账")
+
+if not df_raw.empty:
+    r_col1, r_col2, r_col3 = st.columns(3)
+
+    with r_col1:
+        raw_card_options = (
+            sorted(list(df_raw["卡号"].dropna().unique()))
+            if "卡号" in df_raw.columns
+            else []
+        )
+        selected_raw_cards = st.multiselect(
+            "💳 筛选卡号",
+            options=raw_card_options,
+            default=[],
+            placeholder="支持搜索/勾选卡号（留空全选）",
+            key="raw_card_tim",
+        )
+
+    with r_col2:
+        raw_ua_options = (
+            sorted(
+                [
+                    str(x)
+                    for x in df_raw["UA名字"].dropna().unique()
+                    if str(x).strip()
+                ]
+            )
+            if "UA名字" in df_raw.columns
+            else []
+        )
+        selected_raw_ua = st.multiselect(
+            "👤 筛选 UA",
+            options=raw_ua_options,
+            default=[],
+            placeholder="按 UA 筛选（留空全选）",
+            key="raw_ua_tim",
+        )
+
+    with r_col3:
+        if "交易日期" in df_raw.columns and not df_raw["交易日期"].dropna().empty:
+            r_min_date = df_raw["交易日期"].min()
+            r_max_date = df_raw["交易日期"].max()
+            selected_raw_date_range = st.date_input(
+                "📅 交易日期范围",
+                value=(r_min_date, r_max_date)
+                if (r_min_date and r_max_date)
+                else datetime.now().date(),
+                min_value=r_min_date,
+                max_value=r_max_date,
+                key="raw_date_range_tim",
+            )
+        else:
+            selected_raw_date_range = None
+
+    df_raw_filtered = df_raw.copy()
+    if selected_raw_cards and "卡号" in df_raw_filtered.columns:
+        df_raw_filtered = df_raw_filtered[
+            df_raw_filtered["卡号"].isin(selected_raw_cards)
+        ]
+    if selected_raw_ua and "UA名字" in df_raw_filtered.columns:
+        df_raw_filtered = df_raw_filtered[
+            df_raw_filtered["UA名字"].isin(selected_raw_ua)
+        ]
+    if (
+        selected_raw_date_range
+        and isinstance(selected_raw_date_range, (tuple, list))
+        and len(selected_raw_date_range) == 2
+    ):
+        df_raw_filtered = df_raw_filtered[
+            (df_raw_filtered["交易日期"] >= selected_raw_date_range[0])
+            & (df_raw_filtered["交易日期"] <= selected_raw_date_range[1])
+        ]
+    elif (
+        selected_raw_date_range
+        and isinstance(selected_raw_date_range, (tuple, list))
+        and len(selected_raw_date_range) == 1
+    ):
+        df_raw_filtered = df_raw_filtered[
+            df_raw_filtered["交易日期"] == selected_raw_date_range[0]
+        ]
+
+    col_custom_cfg = {}
+    if "交易金额" in df_raw_filtered.columns:
+        col_custom_cfg["交易金额"] = st.column_config.NumberColumn(
+            "交易金额", format="$%.2f"
+        )
+
+    st.dataframe(
+        df_raw_filtered,
+        column_config=col_custom_cfg,
+        use_container_width=True,
+    )
+else:
+    st.info("当前筛选条件下暂无流水数据。")
