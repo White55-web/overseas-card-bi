@@ -1,6 +1,7 @@
 import glob
 import os
 import re
+import subprocess
 from datetime import datetime, timedelta, timezone
 import pandas as pd
 import plotly.express as px
@@ -112,16 +113,31 @@ PLATFORMS = {
     },
 }
 
-# =================【侧边栏控制面板】=================
+# =================【侧边栏控制面板 (含云端主动 Git Pull 引擎)】=================
 with st.sidebar:
     st.header("⚙️ 中台系统控制")
     if st.button("🔄 立即同步所有卡台数据", use_container_width=True):
+        # 1. 强制云端服务器在后台执行 git pull 拉取 GitHub 最新推送的 Excel
+        try:
+            pull_res = subprocess.run(
+                ["git", "pull"], capture_output=True, text=True, timeout=15
+            )
+            git_msg = (
+                pull_res.stdout.strip()
+                if pull_res.stdout
+                else pull_res.stderr.strip()
+            )
+        except Exception as e:
+            git_msg = "Git 自动拉取已跳过"
+
+        # 2. 清除所有内存缓存与组件状态
         st.cache_data.clear()
-        # 清除组件历史选择残影
         for key in list(st.session_state.keys()):
             del st.session_state[key]
-        st.success("✅ 数据与筛选状态已完全重置！")
+
+        st.success(f"✅ 同步完成！({git_msg})")
         st.rerun()
+
     st.markdown("---")
     st.caption("🛠️ 多卡台买量消耗大盘与流水对账系统")
 
@@ -145,7 +161,6 @@ def get_latest_excel_path(folder_path, fallback_file):
             if not os.path.basename(f).startswith("~$")
         ]
         if excel_files:
-            # 采用文件名自然排序，彻底解决 Git/Linux 云端部署物理修改时间失效的问题
             return sorted(excel_files)[-1]
 
     if os.path.exists(fallback_file):
