@@ -137,7 +137,7 @@ def normalize_card_series(series):
 
 
 def get_latest_excel_path(folder_path, fallback_file):
-    """自动获取指定文件夹中最新修改的 .xlsx 文件"""
+    """自动获取指定文件夹中最新命名的 .xlsx 文件（按自然文件名升序，取最后一张）"""
     if os.path.exists(folder_path):
         excel_files = [
             f
@@ -145,7 +145,8 @@ def get_latest_excel_path(folder_path, fallback_file):
             if not os.path.basename(f).startswith("~$")
         ]
         if excel_files:
-            return max(excel_files, key=os.path.getmtime)
+            # 采用文件名自然排序，彻底解决 Git/Linux 云端部署物理修改时间失效的问题
+            return sorted(excel_files)[-1]
 
     if os.path.exists(fallback_file):
         return fallback_file
