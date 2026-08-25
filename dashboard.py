@@ -84,7 +84,7 @@ st.markdown(
         box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
     </style>
-""",
+    """,
     unsafe_allow_html=True,
 )
 
@@ -96,6 +96,30 @@ PLATFORMS = {
         "dict_file": "Tim字典.xlsx",
     },
 }
+
+
+# =================【GitHub 自动同步引擎】=================
+def sync_github_data(force=False):
+    """主动从 GitHub 仓库拉取最新提交的 Excel 流水文件"""
+    now = datetime.now().timestamp()
+    last_sync = st.session_state.get("_last_git_pull_time", 0)
+
+    # 默认至少间隔 20 秒拉取一次，防止高频点击耗尽资源；force=True 时强制拉取
+    if force or (now - last_sync > 20):
+        st.session_state["_last_git_pull_time"] = now
+        try:
+            res = subprocess.run(
+                ["git", "pull"], capture_output=True, text=True, timeout=12
+            )
+            msg = res.stdout.strip() if res.stdout else res.stderr.strip()
+            return msg or "Git 同步成功"
+        except Exception as e:
+            return f"本地/跳过: {e}"
+    return "无需重复拉取"
+
+
+# 页面启动时自动检测并轻量同步一次 GitHub
+sync_github_data(force=False)
 
 
 # =================【通用工具与数据清洗引擎】=================
@@ -142,7 +166,7 @@ def extract_file_datetime(filepath):
         except Exception:
             pass
 
-    # 3. 手动导出文件无时间标记时，读取文件系统的写入时间
+    # 3. 读取文件系统的写入时间
     return file_mtime
 
 
@@ -154,7 +178,7 @@ def get_display_file_time(file_path, dt_obj):
 
 
 def get_latest_excel_path(folder_path, fallback_file):
-    """同时扫描 Tim_Data/ 目录与项目根目录，按绝对最新时间戳获取真实最新文件"""
+    """扫描目录与根目录，按文件名时间戳获取真实最新文件"""
     candidate_files = []
 
     if os.path.exists(folder_path):
@@ -169,25 +193,24 @@ def get_latest_excel_path(folder_path, fallback_file):
     if os.path.exists(fallback_file):
         candidate_files.append(fallback_file)
 
-    # 扫描根目录下手动放置的表格（如手动导出的 Tim 测试表）
     for f in os.listdir("."):
         if (
             f.endswith(".xlsx")
             and not f.startswith("~$")
             and ("tim" in f.lower())
             and ("字典" not in f)
+            and ("清洗" not in f)
         ):
             candidate_files.append(f)
 
     candidate_files = list(set(candidate_files))
     if candidate_files:
-        # 严格按照文件名内的真实时间戳取最大值
         return max(candidate_files, key=extract_file_datetime)
 
     return None
 
 
-@st.cache_data(show_spinner=False, ttl=120)  # 2分钟保底自动穿透缓存
+@st.cache_data(show_spinner=False, ttl=60)  # 60 秒自动穿透缓存
 def load_and_clean_raw_cached(
     raw_file_path, dict_file_path, raw_timestamp, dict_mtime
 ):
@@ -325,26 +348,14 @@ if df_raw.empty:
 with st.sidebar:
     st.header("⚙️ 中台系统控制")
     if st.button("🔄 立即刷新 / 同步最新数据", use_container_width=True):
-        try:
-            pull_res = subprocess.run(
-                ["git", "pull"], capture_output=True, text=True, timeout=15
-            )
-            git_msg = (
-                pull_res.stdout.strip()
-                if pull_res.stdout
-                else pull_res.stderr.strip()
-            )
-        except Exception:
-            git_msg = "本地直读"
-
+        git_msg = sync_github_data(force=True)
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
             del st.session_state[key]
-
         st.success(f"✅ 同步完成！({git_msg})")
         st.rerun()
 
-    # 纯前端 60 秒无感静默轮询（免装额外三方库）
+    # 纯前端 60 秒无感静默轮询
     auto_refresh = st.checkbox("⏱️ 开启 60 秒自动静默轮询", value=True)
     if auto_refresh:
         st.markdown(
