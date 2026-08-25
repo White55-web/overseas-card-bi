@@ -156,10 +156,14 @@ def normalize_card_series(series):
 
 
 def extract_file_datetime(filepath):
-    """全兼容时间提取：优先解析文件名中的秒级时间戳，准确识别 20_20_xx 等各类命名"""
+    """
+    精准时间提取引擎：
+    1. 严格只解析文件名中的真实导出时间
+    2. 无时间戳的非标准文件直接返回历史最早时间 (datetime.min)，彻底杜绝物理修改时间篡位
+    """
     filename = os.path.basename(filepath)
 
-    # 1. 匹配标准秒级时间戳: Tim_2026-08-25 20_20_04.xlsx 或 Tim_2026-08-25 20-20-04.xlsx
+    # 1. 匹配标准秒级时间戳: Tim_2026-08-25 21_42_16.xlsx 或 Tim_2026-08-25 21-42-16.xlsx
     match_sec = re.search(
         r"(\d{4})[-_](\d{2})[-_](\d{2})[\s_]+(\d{2})[-_:](\d{2})[-_:](\d{2})",
         filename,
@@ -173,63 +177,44 @@ def extract_file_datetime(filepath):
 
     # 2. 匹配短日期格式: 2026-08-25 或 20260825
     match_day = re.search(r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})", filename)
-    file_mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
     if match_day:
         try:
             y, m, d = map(int, match_day.groups())
-            return datetime(
-                y,
-                m,
-                d,
-                file_mtime.hour,
-                file_mtime.minute,
-                file_mtime.second,
-                file_mtime.microsecond,
-            )
+            return datetime(y, m, d, 0, 0, 0)
         except Exception:
             pass
 
-    # 3. 读取物理文件的写入修改时间
-    return file_mtime
+    # 3. 核心修复：无时间戳的文件一律返回历史最早时间，绝不使用物理时间
+    return datetime.min
 
 
 def get_display_file_time(file_path, dt_obj):
     """智能格式化展示导出时间"""
-    if dt_obj:
+    if dt_obj and dt_obj != datetime.min:
         return dt_obj.strftime("%Y-%m-%d %H:%M:%S")
     return "未知"
 
 
 def get_latest_excel_path(folder_path, fallback_file):
-    """同时扫描 Tim_Data/ 与根目录，严格按照文件名内的真实时间戳取最新文件"""
-    candidate_files = []
-
+    """
+    严格隔离的最新文件获取器：
+    1. 优先且只从专属文件夹 (Tim_Data) 提取绝对最新的时间戳流水
+    2. 绝不扫描根目录，避免测试表干扰
+    3. 只有专属文件夹完全为空时才使用备用表
+    """
     if os.path.exists(folder_path):
-        candidate_files.extend(
-            [
-                os.path.join(folder_path, f)
-                for f in os.listdir(folder_path)
-                if f.endswith(".xlsx") and not f.startswith("~$")
-            ]
-        )
+        folder_files = [
+            os.path.join(folder_path, f)
+            for f in os.listdir(folder_path)
+            if f.endswith(".xlsx") and not f.startswith("~$")
+        ]
+        # 只要文件夹里有流水表，严格只在文件夹内部按文件名时间戳取绝对最大值
+        if folder_files:
+            return max(folder_files, key=extract_file_datetime)
 
-    if os.path.exists(fallback_file):
-        candidate_files.append(fallback_file)
-
-    for f in os.listdir("."):
-        if (
-            f.endswith(".xlsx")
-            and not f.startswith("~$")
-            and ("tim" in f.lower())
-            and ("字典" not in f)
-            and ("清洗" not in f)
-        ):
-            candidate_files.append(f)
-
-    candidate_files = list(set(candidate_files))
-    if candidate_files:
-        # 严格按照解析出的时间对象排序，选取绝对最新的一张表
-        return max(candidate_files, key=extract_file_datetime)
+    # 只有专属文件夹为空或不存在时，才启用备用文件
+    if fallback_file and os.path.exists(fallback_file):
+        return fallback_file
 
     return None
 
@@ -340,14 +325,18 @@ if not file_path or not os.path.exists(file_path):
     st.stop()
 
 latest_dt_obj = extract_file_datetime(file_path)
-raw_timestamp = latest_dt_obj.timestamp() if latest_dt_obj else 0
+raw_timestamp = (
+    latest_dt_obj.timestamp()
+    if (latest_dt_obj and latest_dt_obj != datetime.min)
+    else 0
+)
 dict_mtime = (
     os.path.getmtime(cfg["dict_file"])
     if os.path.exists(cfg["dict_file"])
     else 0
 )
 
-# 核心防死锁：文件变动时强制清空旧的控件状态，确保日期范围默认扩展到今天
+# 核心防死锁：文件变动时强制清空旧的控件状态，确保日期范围默认扩展到最新一天
 if st.session_state.get("_last_raw_timestamp") != raw_timestamp:
     st.session_state["_last_raw_timestamp"] = raw_timestamp
     for k in [
