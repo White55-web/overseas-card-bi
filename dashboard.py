@@ -7,9 +7,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-# =================【1. 页面基本配置与时区设定】=================
+# =================【1. 页面基本配置与全局高颜值 UI】=================
 st.set_page_config(
-    page_title="Tim 卡台数据看板 (公开版)",
+    page_title="Tim 卡台数据看板",
+    page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -17,41 +18,20 @@ st.set_page_config(
 # 强制定义北京时间 (UTC+8)
 BEIJING_TZ = timezone(timedelta(hours=8))
 
-
-def get_display_file_time(file_path, raw_mtime):
-    """智能解析时间：
-    1. 优先从卡台导出的文件名中正则提取真实导出时间
-    2. 若提取失败，则取物理修改时间并强制转换为北京时间 (UTC+8)
-    """
-    if file_path:
-        filename = os.path.basename(file_path)
-        match = re.search(
-            r"(\d{4}[-_]\d{2}[-_]\d{2})[\s_]+(\d{2})[-_:](\d{2})[-_:](\d{2})",
-            filename,
-        )
-        if match:
-            date_part = match.group(1).replace("_", "-")
-            return f"{date_part} {match.group(2)}:{match.group(3)}:{match.group(4)}"
-
-    if raw_mtime > 0:
-        return datetime.fromtimestamp(raw_mtime, tz=BEIJING_TZ).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-    return "未知"
-
-
-# =================【全局高颜值 UI/CSS 注入】=================
 st.markdown(
     """
     <style>
+    /* 全局字体与版心微调 */
     html, body, [class*="css"] {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
     .main .block-container {
-        padding-top: 1.8rem;
+        padding-top: 1.6rem;
         padding-bottom: 3rem;
         max-width: 96%;
     }
+
+    /* 顶部 KPI Metric 指标卡片立体化与悬浮动效 */
     [data-testid="stMetric"] {
         background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
         border: 1px solid #e2e8f0;
@@ -71,10 +51,12 @@ st.markdown(
         color: #64748b !important;
     }
     [data-testid="stMetricValue"] {
-        font-size: 1.55rem !important;
+        font-size: 1.45rem !important;
         font-weight: 700 !important;
         color: #0f172a !important;
     }
+
+    /* 标签页 Tabs 现代圆角胶囊样式 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: #f1f5f9;
@@ -93,6 +75,13 @@ st.markdown(
         background-color: #ffffff !important;
         box-shadow: 0 2px 4px rgba(0,0,0,0.06) !important;
         color: #2563eb !important;
+    }
+
+    /* 折叠面板平滑化 */
+    [data-testid="stExpander"] {
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 10px !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
     </style>
 """,
@@ -122,7 +111,7 @@ with st.sidebar:
                 else pull_res.stderr.strip()
             )
         except Exception:
-            git_msg = "Git 自动拉取已跳过"
+            git_msg = "Git 同步已跳过"
 
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
@@ -132,7 +121,7 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("---")
-    st.caption("🛠️ Tim 买量消耗大盘与流水对账系统")
+    st.caption("🛠️ Tim 买量消耗大盘与流水对账系统 ｜ White制作")
 
 
 # =================【通用工具与数据清洗引擎】=================
@@ -145,8 +134,27 @@ def normalize_card_series(series):
     return s.str[-4:].str.zfill(4)
 
 
+def get_display_file_time(file_path, raw_mtime):
+    """智能提取导出时间"""
+    if file_path:
+        filename = os.path.basename(file_path)
+        match = re.search(
+            r"(\d{4}[-_]\d{2}[-_]\d{2})[\s_]+(\d{2})[-_:](\d{2})[-_:](\d{2})",
+            filename,
+        )
+        if match:
+            date_part = match.group(1).replace("_", "-")
+            return f"{date_part} {match.group(2)}:{match.group(3)}:{match.group(4)}"
+
+    if raw_mtime > 0:
+        return datetime.fromtimestamp(raw_mtime, tz=BEIJING_TZ).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+    return "未知"
+
+
 def get_latest_excel_path(folder_path, fallback_file):
-    """自动获取指定文件夹中最新命名的 .xlsx 文件（按自然文件名升序，取最后一张）"""
+    """按自然文件名升序，取最新一张导出的 .xlsx"""
     if os.path.exists(folder_path):
         excel_files = [
             f
@@ -290,7 +298,7 @@ dict_status = (
 )
 
 st.caption(
-    f"📁 实时载入流水: `{file_path}` ｜ 🕒 生成时间: **{mtime_str}** ｜ 📖 字典状态: {dict_status} ｜ ⚡ 内存缓存已激活"
+    f"📁 实时载入流水: `{file_path}` ｜ 🕒 导出时间: **{mtime_str}** ｜ 📖 字典状态: {dict_status} ｜ ⚡ 内存缓存已激活"
 )
 
 # ----------------------------------------------------
@@ -305,9 +313,7 @@ with st.expander("🔍 展开 / 折叠【Tim】主筛选条件", expanded=True):
             m_max_date = df_raw["交易日期"].max()
             main_date_range = st.date_input(
                 "📅 交易日期范围",
-                value=(m_min_date, m_max_date)
-                if (m_min_date and m_max_date)
-                else datetime.now().date(),
+                value=(m_min_date, m_max_date),
                 min_value=m_min_date,
                 max_value=m_max_date,
                 key="main_date_range_tim",
@@ -321,7 +327,7 @@ with st.expander("🔍 展开 / 折叠【Tim】主筛选条件", expanded=True):
                 [
                     str(x)
                     for x in df_raw["UA名字"].dropna().unique()
-                    if str(x).strip()
+                    if str(x).strip() and str(x) != "nan"
                 ]
             )
             selected_main_ua = st.multiselect(
@@ -337,7 +343,11 @@ with st.expander("🔍 展开 / 折叠【Tim】主筛选条件", expanded=True):
     with f_col3:
         if "交易状态" in df_raw.columns:
             main_status_options = sorted(
-                list(df_raw["交易状态"].dropna().unique())
+                [
+                    x
+                    for x in df_raw["交易状态"].dropna().unique()
+                    if str(x).strip()
+                ]
             )
             selected_main_status = st.multiselect(
                 "📌 交易状态",
@@ -348,7 +358,7 @@ with st.expander("🔍 展开 / 折叠【Tim】主筛选条件", expanded=True):
         else:
             selected_main_status = []
 
-# 应用主筛选条件到大盘主视图
+# 应用主筛选条件
 df_main_filtered = df_raw.copy()
 if (
     main_date_range
@@ -377,6 +387,189 @@ if selected_main_status and "交易状态" in df_main_filtered.columns:
     df_main_filtered = df_main_filtered[
         df_main_filtered["交易状态"].isin(selected_main_status)
     ]
+
+# ----------------------------------------------------
+# 顶部核心 KPI 指标卡 (5 列驾驶舱)
+# ----------------------------------------------------
+latest_global_date = (
+    df_raw["交易日期"].max() if "交易日期" in df_raw.columns else None
+)
+today_pending_sum = (
+    df_raw[
+        (df_raw["交易日期"] == latest_global_date)
+        & (df_raw["交易状态"] == "PENDING")
+    ]["交易金额"].sum()
+    if (latest_global_date and "交易状态" in df_raw.columns)
+    else 0.0
+)
+
+pending_spend = (
+    df_main_filtered[df_main_filtered["交易状态"] == "PENDING"][
+        "交易金额"
+    ].sum()
+    if "交易状态" in df_main_filtered.columns
+    else 0.0
+)
+complete_spend = (
+    df_main_filtered[df_main_filtered["交易状态"] == "COMPLETE"][
+        "交易金额"
+    ].sum()
+    if "交易状态" in df_main_filtered.columns
+    else 0.0
+)
+active_card_cnt = (
+    df_main_filtered[df_main_filtered["交易状态"] == "PENDING"]["卡号"].nunique()
+    if "交易状态" in df_main_filtered.columns
+    else df_main_filtered["卡号"].nunique()
+)
+
+k1, k2, k3, k4 = st.columns(4)
+with k1:
+    st.metric(
+        label="💰 筛选总消耗 (PENDING)",
+        value=f"${pending_spend:,.2f}",
+        help="当前主筛选条件所选日期与 UA 范围内的 PENDING 消耗总计",
+    )
+with k2:
+    st.metric(
+        label=f"🔥 今日全盘消耗 ({latest_global_date})",
+        value=f"${today_pending_sum:,.2f}",
+        help=f"最新数据日 ({latest_global_date}) 截至目前的 PENDING 扣款总额",
+    )
+with k3:
+    st.metric(
+        label="💳 PENDING 活跃卡数",
+        value=f"{active_card_cnt} 张",
+        help="当前筛选范围内产生扣费的独立活跃卡数",
+    )
+with k4:
+    st.metric(
+        label="✅ COMPLETE 历史结算",
+        value=f"${complete_spend:,.2f}",
+        help="当前筛选范围内已完全入账结算的 COMPLETE 金额",
+    )
+
+# ----------------------------------------------------
+# 板块 0.5：🚨 拒付熔断监控雷达（DECLINED / FAILED 实时拦截）
+# ----------------------------------------------------
+if "交易状态" in df_raw.columns:
+    df_declined_all = df_raw[
+        df_raw["交易状态"]
+        .astype(str)
+        .str.upper()
+        .str.strip()
+        .isin(["DECLINED", "FAILED"])
+    ].copy()
+else:
+    df_declined_all = pd.DataFrame()
+
+total_dec_cnt = len(df_declined_all)
+today_dec_cnt = 0
+today_dec_sum = 0.0
+
+if not df_declined_all.empty:
+    if "交易日期" in df_declined_all.columns and latest_global_date:
+        df_today_dec = df_declined_all[
+            df_declined_all["交易日期"] == latest_global_date
+        ]
+        today_dec_cnt = len(df_today_dec)
+        today_dec_sum = (
+            df_today_dec["交易金额"].sum()
+            if "交易金额" in df_today_dec.columns
+            else 0.0
+        )
+
+    affected_cards_cnt = df_declined_all["卡号"].nunique()
+
+    # 今日有拒付则默认展开，无则折叠
+    with st.expander(
+        f"🚨 【Tim】拒付熔断监控雷达（💥 今日拒付: {today_dec_cnt} 笔 ｜ 累计拒付: {total_dec_cnt} 笔 ｜ 涉及 {affected_cards_cnt} 张卡）",
+        expanded=(today_dec_cnt > 0),
+    ):
+        if today_dec_cnt > 0:
+            st.error(
+                f"🚨 **严重风控警告**：今日已检测到 **{today_dec_cnt}** 笔扣款失败（DECLINED），金额共计 **${today_dec_sum:,.2f}**！"
+                f"涉及 **{df_today_dec['卡号'].nunique()}** 张卡。请立即通知对应 UA 补款或停户，防止 Meta 触发风控封户！"
+            )
+        else:
+            st.warning(
+                f"ℹ️ 历史累计检测到 **{total_dec_cnt}** 笔拒付记录（今日暂无新增拒付，运行平稳）。"
+            )
+
+        dec_col_scope, dec_col_ua = st.columns([1, 2])
+        with dec_col_scope:
+            dec_scope = st.radio(
+                "显示范围",
+                ["仅看今日拒付", "查看全部历史拒付"],
+                horizontal=True,
+                key="tim_dec_scope",
+            )
+        with dec_col_ua:
+            dec_ua_filter = st.multiselect(
+                "筛选责任 UA",
+                options=sorted(
+                    [
+                        str(x)
+                        for x in df_declined_all["UA名字"].dropna().unique()
+                        if str(x).strip() and str(x) != "nan"
+                    ]
+                ),
+                default=[],
+                placeholder="留空展示全部责任人",
+                key="tim_dec_ua_filter",
+            )
+
+        df_dec_show = df_declined_all.copy()
+        if (
+            dec_scope == "仅看今日拒付"
+            and latest_global_date
+            and "交易日期" in df_dec_show.columns
+        ):
+            df_dec_show = df_dec_show[
+                df_dec_show["交易日期"] == latest_global_date
+            ]
+        if dec_ua_filter:
+            df_dec_show = df_dec_show[df_dec_show["UA名字"].isin(dec_ua_filter)]
+
+        show_dec_cols = [
+            c
+            for c in [
+                "交易时间",
+                "交易日期",
+                "卡号",
+                "UA名字",
+                "交易金额",
+                "交易状态",
+            ]
+            if c in df_dec_show.columns
+        ]
+
+        sort_field = (
+            "交易时间" if "交易时间" in df_dec_show.columns else "交易日期"
+        )
+        st.dataframe(
+            df_dec_show[show_dec_cols].sort_values(
+                by=sort_field, ascending=False
+            ),
+            column_config={
+                "交易金额": st.column_config.NumberColumn(
+                    "💥 拒付金额", format="$%.2f"
+                ),
+                "交易状态": st.column_config.TextColumn("📌 状态"),
+                "卡号": st.column_config.TextColumn("💳 异常卡号"),
+                "UA名字": st.column_config.TextColumn("👤 责任 UA"),
+                "交易时间": st.column_config.DatetimeColumn(
+                    "🕒 发生时间", format="YYYY-MM-DD HH:mm:ss"
+                ),
+            },
+            hide_index=True,
+            use_container_width=True,
+        )
+else:
+    with st.expander(
+        "🛡️ 【Tim】拒付熔断监控雷达（🎉 0 笔拒付 ｜ 状态平稳）", expanded=False
+    ):
+        st.success("🎉 全绿通过：当前数据中未检测到任何 DECLINED 扣款失败记录！")
 
 # ----------------------------------------------------
 # 板块 1：中部趋势图表（柱状图 + 环形饼图）
@@ -489,7 +682,7 @@ if (
                 [
                     str(x)
                     for x in df_pending["UA名字"].dropna().unique()
-                    if str(x).strip()
+                    if str(x).strip() and str(x) != "nan"
                 ]
             )
             selected_pivot_ua = st.multiselect(
@@ -529,8 +722,14 @@ if (
         and len(selected_pivot_date_range) == 2
     ):
         df_pivot_filtered = df_pivot_filtered[
-            (df_pivot_filtered["交易日期"] >= selected_pivot_date_range[0])
-            & (df_pivot_filtered["交易日期"] <= selected_pivot_date_range[1])
+            (
+                df_pivot_filtered["交易日期"]
+                >= selected_pivot_date_range[0]
+            )
+            & (
+                df_pivot_filtered["交易日期"]
+                <= selected_pivot_date_range[1]
+            )
         ]
     elif (
         isinstance(selected_pivot_date_range, (tuple, list))
@@ -722,7 +921,7 @@ if not df_raw.empty:
                 [
                     str(x)
                     for x in df_raw["UA名字"].dropna().unique()
-                    if str(x).strip()
+                    if str(x).strip() and str(x) != "nan"
                 ]
             )
             if "UA名字" in df_raw.columns
