@@ -108,47 +108,88 @@ def normalize_card_series(series):
     return s.str[-4:].str.zfill(4)
 
 
-def get_display_file_time(file_path, raw_mtime):
-    """智能提取导出时间"""
-    if file_path:
-        filename = os.path.basename(file_path)
-        match = re.search(
-            r"(\d{4}[-_]\d{2}[-_]\d{2})[\s_]+(\d{2})[-_:](\d{2})[-_:](\d{2})",
-            filename,
-        )
-        if match:
-            date_part = match.group(1).replace("_", "-")
-            return (
-                f"{date_part} {match.group(2)}:{match.group(3)}:{match.group(4)}"
-            )
+def extract_file_datetime(filepath):
+    """全兼容时间提取：优先解析文件名中的长/短时间戳，无法解析则读取物理修改时间"""
+    filename = os.path.basename(filepath)
 
-    if raw_mtime > 0:
-        return datetime.fromtimestamp(raw_mtime, tz=BEIJING_TZ).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+    # 1. 精准匹配长格式秒级时间戳: Tim_2026-08-25 15_02_47.xlsx
+    match_sec = re.search(
+        r"(\d{4})[-_](\d{2})[-_](\d{2})[\s_]+(\d{2})[-_:](\d{2})[-_:](\d{2})",
+        filename,
+    )
+    if match_sec:
+        try:
+            y, m, d, h, mi, s = map(int, match_sec.groups())
+            return datetime(y, m, d, h, mi, s)
+        except Exception:
+            pass
+
+    # 2. 匹配短日期格式: 2026-08-25 或 20260825
+    match_day = re.search(r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})", filename)
+    file_mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
+    if match_day:
+        try:
+            y, m, d = map(int, match_day.groups())
+            return datetime(
+                y,
+                m,
+                d,
+                file_mtime.hour,
+                file_mtime.minute,
+                file_mtime.second,
+                file_mtime.microsecond,
+            )
+        except Exception:
+            pass
+
+    # 3. 手动导出文件无时间标记时，读取文件系统的写入时间
+    return file_mtime
+
+
+def get_display_file_time(file_path, dt_obj):
+    """智能格式化展示导出时间"""
+    if dt_obj:
+        return dt_obj.strftime("%Y-%m-%d %H:%M:%S")
     return "未知"
 
 
 def get_latest_excel_path(folder_path, fallback_file):
-    """按文件实际修改时间 (mtime) 绝对精准获取最新落盘文件"""
+    """同时扫描 Tim_Data/ 目录与项目根目录，按绝对最新时间戳获取真实最新文件"""
+    candidate_files = []
+
     if os.path.exists(folder_path):
-        excel_files = [
-            os.path.join(folder_path, f)
-            for f in os.listdir(folder_path)
-            if f.endswith(".xlsx") and not f.startswith("~$")
-        ]
-        if excel_files:
-            return max(excel_files, key=os.path.getmtime)
+        candidate_files.extend(
+            [
+                os.path.join(folder_path, f)
+                for f in os.listdir(folder_path)
+                if f.endswith(".xlsx") and not f.startswith("~$")
+            ]
+        )
 
     if os.path.exists(fallback_file):
-        return fallback_file
+        candidate_files.append(fallback_file)
+
+    # 扫描根目录下手动放置的表格（如手动导出的 Tim 测试表）
+    for f in os.listdir("."):
+        if (
+            f.endswith(".xlsx")
+            and not f.startswith("~$")
+            and ("tim" in f.lower())
+            and ("字典" not in f)
+        ):
+            candidate_files.append(f)
+
+    candidate_files = list(set(candidate_files))
+    if candidate_files:
+        # 严格按照文件名内的真实时间戳取最大值
+        return max(candidate_files, key=extract_file_datetime)
 
     return None
 
 
 @st.cache_data(show_spinner=False, ttl=120)  # 2分钟保底自动穿透缓存
 def load_and_clean_raw_cached(
-    raw_file_path, dict_file_path, raw_mtime, dict_mtime
+    raw_file_path, dict_file_path, raw_timestamp, dict_mtime
 ):
     """带 Streamlit 内存级缓存的数据清洗引擎"""
     df_raw = pd.DataFrame()
@@ -251,16 +292,19 @@ if not file_path or not os.path.exists(file_path):
     )
     st.stop()
 
-raw_mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else 0
+# 提取真实的时间戳对象与时间数值
+latest_dt_obj = extract_file_datetime(file_path)
+raw_timestamp = latest_dt_obj.timestamp() if latest_dt_obj else 0
+
 dict_mtime = (
     os.path.getmtime(cfg["dict_file"])
     if os.path.exists(cfg["dict_file"])
     else 0
 )
 
-# 核心防死锁机制：如果检测到磁盘生成了新文件或修改时间变化，强制清空旧的控件状态
-if st.session_state.get("_last_mtime") != raw_mtime:
-    st.session_state["_last_mtime"] = raw_mtime
+# 核心防死锁机制：如果检测到新文件或时间戳改变，强制清空旧的控件状态，确保展示最新日期
+if st.session_state.get("_last_raw_timestamp") != raw_timestamp:
+    st.session_state["_last_raw_timestamp"] = raw_timestamp
     for k in [
         "main_date_range_tim",
         "pivot_date_range_tim",
@@ -270,7 +314,7 @@ if st.session_state.get("_last_mtime") != raw_mtime:
             del st.session_state[k]
 
 df_raw = load_and_clean_raw_cached(
-    file_path, cfg["dict_file"], raw_mtime, dict_mtime
+    file_path, cfg["dict_file"], raw_timestamp, dict_mtime
 )
 
 if df_raw.empty:
@@ -319,7 +363,7 @@ with st.sidebar:
 
 
 # =================【主页面渲染】=================
-mtime_str = get_display_file_time(file_path, raw_mtime)
+mtime_str = get_display_file_time(file_path, latest_dt_obj)
 dict_status = (
     f"✅ 已关联 `{cfg['dict_file']}`"
     if os.path.exists(cfg["dict_file"])
