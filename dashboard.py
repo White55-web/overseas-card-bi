@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta, timezone
-import glob
+import io
 import os
 import re
-import subprocess
 import pandas as pd
 import plotly.express as px
+import requests
 import streamlit as st
 
 # =================【1. 页面基本配置与全局高颜值 UI】=================
@@ -88,82 +88,28 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# =================【Tim 平台专用配置】=================
-PLATFORMS = {
-    "Tim": {
-        "folder": "Tim_Data",
-        "fallback_file": "Tim 清洗操作.xlsx",
-        "dict_file": "Tim字典.xlsx",
-    },
-}
+# =================【2. 仓库与数据源核心配置】=================
+GITHUB_OWNER = "White55-web"
+GITHUB_REPO = "overseas-card-bi"
+FOLDER_NAME = "Tim_Data"
+DICT_FILE_NAME = "Tim字典.xlsx"
+FALLBACK_LOCAL_FILE = "Tim 清洗操作.xlsx"
 
 
-# =================【终极 GitHub 强行镜像同步引擎】=================
-def force_sync_github(force=False):
+# =================【3. 纯算法时间解析引擎】=================
+def extract_file_datetime(filepath_or_name):
     """
-    强制从 GitHub 远端覆盖拉取最新数据
-    解决 Streamlit Cloud 游离分支、浅克隆、锁文件导致的 pull 失败
+    精准时间提取引擎（纯算法，绝不调用物理文件时间）：
+    1. 匹配 Tim_2026-08-25 21_42_16.xlsx 等秒级时间戳
+    2. 匹配 2026-08-25 等日期格式
+    3. 无时间的文件直接返回 datetime.min，杜绝物理修改时间篡位
     """
-    now = datetime.now().timestamp()
-    last_sync = st.session_state.get("_last_git_pull_time", 0)
+    if not filepath_or_name:
+        return datetime.min
 
-    # 默认至少间隔 10 秒拉取一次；手动点击时 force=True 立即触发
-    if force or (now - last_sync > 10):
-        st.session_state["_last_git_pull_time"] = now
-        try:
-            # 1. 安全解除可能残留在容器中的 git 锁文件
-            lock_path = os.path.join(".git", "index.lock")
-            if os.path.exists(lock_path):
-                try:
-                    os.remove(lock_path)
-                except Exception:
-                    pass
+    filename = os.path.basename(str(filepath_or_name))
 
-            # 2. 强行抓取远端 main 分支全量数据
-            subprocess.run(
-                ["git", "fetch", "origin", "main"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-
-            # 3. 强制重置工作区，确保本地文件树 100% 镜像同步远端 main 分支
-            res = subprocess.run(
-                ["git", "reset", "--hard", "origin/main"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            msg = res.stdout.strip() if res.stdout else res.stderr.strip()
-            return msg or "已与 GitHub 完全对齐"
-        except Exception as e:
-            return f"直读本地: {e}"
-    return "已是最新版本"
-
-
-# 页面每次加载时尝试静默核对远端
-force_sync_github(force=False)
-
-
-# =================【通用工具与数据清洗引擎】=================
-def normalize_card_series(series):
-    """向量化快速格式化卡号，剥离 .0 并左侧补零"""
-    if series is None or series.empty:
-        return pd.Series(dtype=str)
-    s = series.astype(str).str.strip()
-    s = s.str.replace(r"\.0$", "", regex=True)
-    return s.str[-4:].str.zfill(4)
-
-
-def extract_file_datetime(filepath):
-    """
-    精准时间提取引擎：
-    1. 严格只解析文件名中的真实导出时间
-    2. 无时间戳的非标准文件直接返回历史最早时间 (datetime.min)，彻底杜绝物理修改时间篡位
-    """
-    filename = os.path.basename(filepath)
-
-    # 1. 匹配标准秒级时间戳: Tim_2026-08-25 21_42_16.xlsx 或 Tim_2026-08-25 21-42-16.xlsx
+    # 1. 匹配标准秒级格式 (YYYY-MM-DD HH_MM_SS 或 HH-MM-SS 或 HH:MM:SS)
     match_sec = re.search(
         r"(\d{4})[-_](\d{2})[-_](\d{2})[\s_]+(\d{2})[-_:](\d{2})[-_:](\d{2})",
         filename,
@@ -175,7 +121,7 @@ def extract_file_datetime(filepath):
         except Exception:
             pass
 
-    # 2. 匹配短日期格式: 2026-08-25 或 20260825
+    # 2. 匹配短日期格式 (YYYY-MM-DD 或 YYYYMMDD)
     match_day = re.search(r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})", filename)
     if match_day:
         try:
@@ -184,49 +130,94 @@ def extract_file_datetime(filepath):
         except Exception:
             pass
 
-    # 3. 核心修复：无时间戳的文件一律返回历史最早时间，绝不使用物理时间
     return datetime.min
 
 
-def get_display_file_time(file_path, dt_obj):
-    """智能格式化展示导出时间"""
-    if dt_obj and dt_obj != datetime.min:
-        return dt_obj.strftime("%Y-%m-%d %H:%M:%S")
-    return "未知"
-
-
-def get_latest_excel_path(folder_path, fallback_file):
+# =================【4. GitHub API 在线直读 + 本地双轨引擎】=================
+@st.cache_data(ttl=15, show_spinner=False)  # 15秒缓存穿透
+def fetch_latest_dataset(owner, repo, folder_name, dict_name, fallback_file):
     """
-    严格隔离的最新文件获取器：
-    1. 优先且只从专属文件夹 (Tim_Data) 提取绝对最新的时间戳流水
-    2. 绝不扫描根目录，避免测试表干扰
-    3. 只有专属文件夹完全为空时才使用备用表
+    双轨自适应加载：
+    1. 优先通过 GitHub REST API 在线拉取最新 Excel 流（无视浅克隆与容器磁盘延迟）
+    2. 网络失败或离线时，自动切换为本地目录读取
     """
-    if os.path.exists(folder_path):
-        folder_files = [
-            os.path.join(folder_path, f)
-            for f in os.listdir(folder_path)
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "Streamlit-BI-App",
+    }
+    api_url = (
+        f"https://api.github.com/repos/{owner}/{repo}/contents/{folder_name}"
+    )
+
+    # 尝试轨 1：GitHub 在线 API
+    try:
+        resp = requests.get(api_url, headers=headers, timeout=6)
+        if resp.status_code == 200:
+            files_data = resp.json()
+            xlsx_items = [
+                f
+                for f in files_data
+                if isinstance(f, dict)
+                and f.get("name", "").endswith(".xlsx")
+                and not f.get("name", "").startswith("~$")
+            ]
+            if xlsx_items:
+                latest_item = max(
+                    xlsx_items,
+                    key=lambda x: extract_file_datetime(x.get("name", "")),
+                )
+                file_name = latest_item["name"]
+                dl_url = latest_item["download_url"]
+
+                # 在线下载二进制流
+                file_resp = requests.get(dl_url, headers=headers, timeout=12)
+                if file_resp.status_code == 200:
+                    stream = io.BytesIO(file_resp.content)
+                    dt_obj = extract_file_datetime(file_name)
+                    return stream, file_name, dt_obj, "GitHub API 在线直连"
+    except Exception:
+        pass
+
+    # 尝试轨 2：本地磁盘专属文件夹兜底
+    if os.path.exists(folder_name):
+        local_files = [
+            os.path.join(folder_name, f)
+            for f in os.listdir(folder_name)
             if f.endswith(".xlsx") and not f.startswith("~$")
         ]
-        # 只要文件夹里有流水表，严格只在文件夹内部按文件名时间戳取绝对最大值
-        if folder_files:
-            return max(folder_files, key=extract_file_datetime)
+        if local_files:
+            latest_local = max(local_files, key=extract_file_datetime)
+            file_name = os.path.basename(latest_local)
+            dt_obj = extract_file_datetime(latest_local)
+            return latest_local, file_name, dt_obj, "本地容器缓存"
 
-    # 只有专属文件夹为空或不存在时，才启用备用文件
+    # 尝试轨 3：备用单文件兜底
     if fallback_file and os.path.exists(fallback_file):
-        return fallback_file
+        return fallback_file, os.path.basename(fallback_file), datetime.min, "备用文件"
 
-    return None
+    return None, "未找到数据", datetime.min, "无可用源"
 
 
-@st.cache_data(show_spinner=False, ttl=30)  # 30 秒快速缓存穿透
+# =================【5. 高性能数据清洗与标准化引擎】=================
+def normalize_card_series(series):
+    """向量化快速格式化卡号：剥离 .0 并向左补零到 4 位"""
+    if series is None or series.empty:
+        return pd.Series(dtype=str)
+    s = series.astype(str).str.strip()
+    s = s.str.replace(r"\.0$", "", regex=True)
+    return s.str[-4:].str.zfill(4)
+
+
+@st.cache_data(show_spinner=False, ttl=15)
 def load_and_clean_raw_cached(
-    raw_file_path, dict_file_path, raw_timestamp, dict_mtime
+    raw_source, dict_file_path, file_identifier, timestamp_val
 ):
-    """带 Streamlit 内存级缓存的高性能清洗引擎"""
+    """
+    通用清洗引擎：同时兼容 BytesIO 内存二进制流与本地文件路径
+    """
     df_raw = pd.DataFrame()
     try:
-        excel_file = pd.ExcelFile(raw_file_path)
+        excel_file = pd.ExcelFile(raw_source)
         candidate_dfs = []
         for s_name in excel_file.sheet_names:
             temp_df = excel_file.parse(s_name)
@@ -257,15 +248,14 @@ def load_and_clean_raw_cached(
     else:
         df_raw["match_key"] = ""
 
+    # 字典匹配 UA 归属
     if dict_file_path and os.path.exists(dict_file_path):
         try:
             df_dict = pd.read_excel(dict_file_path)
             df_dict.columns = [str(c).strip() for c in df_dict.columns]
 
             if "UA名字" in df_dict.columns and "卡号" in df_dict.columns:
-                df_dict["UA名字"] = (
-                    df_dict["UA名字"].astype(str).str.strip()
-                )
+                df_dict["UA名字"] = df_dict["UA名字"].astype(str).str.strip()
                 df_dict["match_key"] = normalize_card_series(df_dict["卡号"])
                 df_dict = df_dict.drop_duplicates(
                     subset=["match_key"], keep="last"
@@ -314,29 +304,28 @@ def load_and_clean_raw_cached(
     return df_raw
 
 
-# =================【获取最新文件与状态检测】=================
-cfg = PLATFORMS["Tim"]
-file_path = get_latest_excel_path(cfg["folder"], cfg["fallback_file"])
+# =================【6. 数据载入与状态初始化】=================
+raw_source, current_filename, latest_dt_obj, source_channel = (
+    fetch_latest_dataset(
+        GITHUB_OWNER,
+        GITHUB_REPO,
+        FOLDER_NAME,
+        DICT_FILE_NAME,
+        FALLBACK_LOCAL_FILE,
+    )
+)
 
-if not file_path or not os.path.exists(file_path):
+if raw_source is None:
     st.error(
-        f"❌ 未在 `{cfg['folder']}/` 找到任何 `.xlsx` 文件，且未找到备用文件 `{cfg['fallback_file']}`。"
+        f"❌ 未能从 GitHub 或本地找到有效流水数据。请检查仓库路径 `{FOLDER_NAME}/`。"
     )
     st.stop()
 
-latest_dt_obj = extract_file_datetime(file_path)
 raw_timestamp = (
-    latest_dt_obj.timestamp()
-    if (latest_dt_obj and latest_dt_obj != datetime.min)
-    else 0
-)
-dict_mtime = (
-    os.path.getmtime(cfg["dict_file"])
-    if os.path.exists(cfg["dict_file"])
-    else 0
+    latest_dt_obj.timestamp() if latest_dt_obj != datetime.min else 0
 )
 
-# 核心防死锁：文件变动时强制清空旧的控件状态，确保日期范围默认扩展到最新一天
+# 动态重置筛选状态（当检测到新数据进场时自动展期）
 if st.session_state.get("_last_raw_timestamp") != raw_timestamp:
     st.session_state["_last_raw_timestamp"] = raw_timestamp
     for k in [
@@ -348,26 +337,24 @@ if st.session_state.get("_last_raw_timestamp") != raw_timestamp:
             del st.session_state[k]
 
 df_raw = load_and_clean_raw_cached(
-    file_path, cfg["dict_file"], raw_timestamp, dict_mtime
+    raw_source, DICT_FILE_NAME, current_filename, raw_timestamp
 )
 
 if df_raw.empty:
-    st.warning(f"⚠️ `{file_path}` 中暂无有效流水数据。")
+    st.warning(f"⚠️ `{current_filename}` 中暂无有效流水数据。")
     st.stop()
 
-# =================【侧边栏控制面板】=================
+
+# =================【7. 侧边栏控制面板】=================
 with st.sidebar:
     st.header("⚙️ 中台系统控制")
-    if st.button("🔄 立即刷新 / 强制同步最新数据", use_container_width=True):
-        # 强制清除所有 Streamlit 缓存并强行对齐 GitHub 远端
+    if st.button("🔄 立即刷新 / 获取最新数据", use_container_width=True):
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
             del st.session_state[key]
-        git_res = force_sync_github(force=True)
-        st.success(f"✅ 同步完成: {git_res}")
+        st.success("✅ 缓存已清空，正在重连 GitHub API...")
         st.rerun()
 
-    # 纯前端 60 秒无感静默轮询
     auto_refresh = st.checkbox("⏱️ 开启 60 秒自动静默轮询", value=True)
     if auto_refresh:
         st.markdown(
@@ -385,16 +372,20 @@ with st.sidebar:
     st.caption("🛠️ Tim 买量消耗大盘与流水对账系统 ｜ White制作")
 
 
-# =================【主页面渲染】=================
-mtime_str = get_display_file_time(file_path, latest_dt_obj)
+# =================【8. 主页面渲染】=================
+mtime_str = (
+    latest_dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+    if latest_dt_obj != datetime.min
+    else "历史备份"
+)
 dict_status = (
-    f"✅ 已关联 `{cfg['dict_file']}`"
-    if os.path.exists(cfg["dict_file"])
-    else f"⚠️ 未找到 `{cfg['dict_file']}` (显示为未分配)"
+    f"✅ 已关联 `{DICT_FILE_NAME}`"
+    if os.path.exists(DICT_FILE_NAME)
+    else f"⚠️ 缺少字典 (显示为未分配)"
 )
 
 st.caption(
-    f"📁 实时载入流水: `{file_path}` ｜ 🕒 导出时间: **{mtime_str}** ｜ 📖 字典状态: {dict_status} ｜ ⚡ 动态感知已就绪"
+    f"📁 载入流水: `{current_filename}` ｜ 🕒 导出时间: **{mtime_str}** ｜ 📡 通道: `{source_channel}` ｜ 📖 字典: {dict_status}"
 )
 
 # ----------------------------------------------------
@@ -454,7 +445,7 @@ with st.expander("🔍 展开 / 折叠【Tim】主筛选条件", expanded=True):
         else:
             selected_main_status = []
 
-# 应用主筛选条件
+# 应用主筛选
 df_main_filtered = df_raw.copy()
 if (
     main_date_range
@@ -524,7 +515,7 @@ with k1:
     st.metric(
         label="💰 筛选总消耗 (PENDING)",
         value=f"${pending_spend:,.2f}",
-        help="当前主筛选条件所选日期与 UA 范围内的 PENDING 消耗总计",
+        help="当前筛选日期与 UA 范围内的 PENDING 消耗总计",
     )
 with k2:
     st.metric(
@@ -542,7 +533,7 @@ with k4:
     st.metric(
         label="✅ COMPLETE 历史结算",
         value=f"${complete_spend:,.2f}",
-        help="当前筛选范围内已完全入账结算的 COMPLETE 金额",
+        help="当前筛选范围内已入账结算的 COMPLETE 金额",
     )
 
 # ----------------------------------------------------
