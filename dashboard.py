@@ -98,28 +98,51 @@ PLATFORMS = {
 }
 
 
-# =================【GitHub 自动同步引擎】=================
-def sync_github_data(force=False):
-    """主动从 GitHub 仓库拉取最新提交的 Excel 流水文件"""
+# =================【终极 GitHub 强行镜像同步引擎】=================
+def force_sync_github(force=False):
+    """
+    强制从 GitHub 远端覆盖拉取最新数据
+    解决 Streamlit Cloud 游离分支、浅克隆、锁文件导致的 pull 失败
+    """
     now = datetime.now().timestamp()
     last_sync = st.session_state.get("_last_git_pull_time", 0)
 
-    # 默认至少间隔 20 秒拉取一次，防止高频点击耗尽资源；force=True 时强制拉取
-    if force or (now - last_sync > 20):
+    # 默认至少间隔 10 秒拉取一次；手动点击时 force=True 立即触发
+    if force or (now - last_sync > 10):
         st.session_state["_last_git_pull_time"] = now
         try:
+            # 1. 安全解除可能残留在容器中的 git 锁文件
+            lock_path = os.path.join(".git", "index.lock")
+            if os.path.exists(lock_path):
+                try:
+                    os.remove(lock_path)
+                except Exception:
+                    pass
+
+            # 2. 强行抓取远端 main 分支全量数据
+            subprocess.run(
+                ["git", "fetch", "origin", "main"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+
+            # 3. 强制重置工作区，确保本地文件树 100% 镜像同步远端 main 分支
             res = subprocess.run(
-                ["git", "pull"], capture_output=True, text=True, timeout=12
+                ["git", "reset", "--hard", "origin/main"],
+                capture_output=True,
+                text=True,
+                timeout=15,
             )
             msg = res.stdout.strip() if res.stdout else res.stderr.strip()
-            return msg or "Git 同步成功"
+            return msg or "已与 GitHub 完全对齐"
         except Exception as e:
-            return f"本地/跳过: {e}"
-    return "无需重复拉取"
+            return f"直读本地: {e}"
+    return "已是最新版本"
 
 
-# 页面启动时自动检测并轻量同步一次 GitHub
-sync_github_data(force=False)
+# 页面每次加载时尝试静默核对远端
+force_sync_github(force=False)
 
 
 # =================【通用工具与数据清洗引擎】=================
@@ -133,10 +156,10 @@ def normalize_card_series(series):
 
 
 def extract_file_datetime(filepath):
-    """全兼容时间提取：优先解析文件名中的长/短时间戳，无法解析则读取物理修改时间"""
+    """全兼容时间提取：优先解析文件名中的秒级时间戳，准确识别 20_20_xx 等各类命名"""
     filename = os.path.basename(filepath)
 
-    # 1. 精准匹配长格式秒级时间戳: Tim_2026-08-25 15_02_47.xlsx
+    # 1. 匹配标准秒级时间戳: Tim_2026-08-25 20_20_04.xlsx 或 Tim_2026-08-25 20-20-04.xlsx
     match_sec = re.search(
         r"(\d{4})[-_](\d{2})[-_](\d{2})[\s_]+(\d{2})[-_:](\d{2})[-_:](\d{2})",
         filename,
@@ -166,7 +189,7 @@ def extract_file_datetime(filepath):
         except Exception:
             pass
 
-    # 3. 读取文件系统的写入时间
+    # 3. 读取物理文件的写入修改时间
     return file_mtime
 
 
@@ -178,7 +201,7 @@ def get_display_file_time(file_path, dt_obj):
 
 
 def get_latest_excel_path(folder_path, fallback_file):
-    """扫描目录与根目录，按文件名时间戳获取真实最新文件"""
+    """同时扫描 Tim_Data/ 与根目录，严格按照文件名内的真实时间戳取最新文件"""
     candidate_files = []
 
     if os.path.exists(folder_path):
@@ -205,16 +228,17 @@ def get_latest_excel_path(folder_path, fallback_file):
 
     candidate_files = list(set(candidate_files))
     if candidate_files:
+        # 严格按照解析出的时间对象排序，选取绝对最新的一张表
         return max(candidate_files, key=extract_file_datetime)
 
     return None
 
 
-@st.cache_data(show_spinner=False, ttl=60)  # 60 秒自动穿透缓存
+@st.cache_data(show_spinner=False, ttl=30)  # 30 秒快速缓存穿透
 def load_and_clean_raw_cached(
     raw_file_path, dict_file_path, raw_timestamp, dict_mtime
 ):
-    """带 Streamlit 内存级缓存的数据清洗引擎"""
+    """带 Streamlit 内存级缓存的高性能清洗引擎"""
     df_raw = pd.DataFrame()
     try:
         excel_file = pd.ExcelFile(raw_file_path)
@@ -305,7 +329,7 @@ def load_and_clean_raw_cached(
     return df_raw
 
 
-# =================【获取文件与状态生命周期检测】=================
+# =================【获取最新文件与状态检测】=================
 cfg = PLATFORMS["Tim"]
 file_path = get_latest_excel_path(cfg["folder"], cfg["fallback_file"])
 
@@ -315,17 +339,15 @@ if not file_path or not os.path.exists(file_path):
     )
     st.stop()
 
-# 提取真实的时间戳对象与时间数值
 latest_dt_obj = extract_file_datetime(file_path)
 raw_timestamp = latest_dt_obj.timestamp() if latest_dt_obj else 0
-
 dict_mtime = (
     os.path.getmtime(cfg["dict_file"])
     if os.path.exists(cfg["dict_file"])
     else 0
 )
 
-# 核心防死锁机制：如果检测到新文件或时间戳改变，强制清空旧的控件状态，确保展示最新日期
+# 核心防死锁：文件变动时强制清空旧的控件状态，确保日期范围默认扩展到今天
 if st.session_state.get("_last_raw_timestamp") != raw_timestamp:
     st.session_state["_last_raw_timestamp"] = raw_timestamp
     for k in [
@@ -347,12 +369,13 @@ if df_raw.empty:
 # =================【侧边栏控制面板】=================
 with st.sidebar:
     st.header("⚙️ 中台系统控制")
-    if st.button("🔄 立即刷新 / 同步最新数据", use_container_width=True):
-        git_msg = sync_github_data(force=True)
+    if st.button("🔄 立即刷新 / 强制同步最新数据", use_container_width=True):
+        # 强制清除所有 Streamlit 缓存并强行对齐 GitHub 远端
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
             del st.session_state[key]
-        st.success(f"✅ 同步完成！({git_msg})")
+        git_res = force_sync_github(force=True)
+        st.success(f"✅ 同步完成: {git_res}")
         st.rerun()
 
     # 纯前端 60 秒无感静默轮询
