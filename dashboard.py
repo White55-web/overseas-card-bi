@@ -1,8 +1,8 @@
+from datetime import datetime, timedelta, timezone
 import glob
 import os
 import re
 import subprocess
-from datetime import datetime, timedelta, timezone
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -97,32 +97,6 @@ PLATFORMS = {
     },
 }
 
-# =================【侧边栏控制面板 (含云端主动 Git Pull 引擎)】=================
-with st.sidebar:
-    st.header("⚙️ 中台系统控制")
-    if st.button("🔄 立即同步 Tim 卡台数据", use_container_width=True):
-        try:
-            pull_res = subprocess.run(
-                ["git", "pull"], capture_output=True, text=True, timeout=15
-            )
-            git_msg = (
-                pull_res.stdout.strip()
-                if pull_res.stdout
-                else pull_res.stderr.strip()
-            )
-        except Exception:
-            git_msg = "Git 同步已跳过"
-
-        st.cache_data.clear()
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-
-        st.success(f"✅ 同步完成！({git_msg})")
-        st.rerun()
-
-    st.markdown("---")
-    st.caption("🛠️ Tim 买量消耗大盘与流水对账系统 ｜ White制作")
-
 
 # =================【通用工具与数据清洗引擎】=================
 def normalize_card_series(series):
@@ -144,7 +118,9 @@ def get_display_file_time(file_path, raw_mtime):
         )
         if match:
             date_part = match.group(1).replace("_", "-")
-            return f"{date_part} {match.group(2)}:{match.group(3)}:{match.group(4)}"
+            return (
+                f"{date_part} {match.group(2)}:{match.group(3)}:{match.group(4)}"
+            )
 
     if raw_mtime > 0:
         return datetime.fromtimestamp(raw_mtime, tz=BEIJING_TZ).strftime(
@@ -154,15 +130,15 @@ def get_display_file_time(file_path, raw_mtime):
 
 
 def get_latest_excel_path(folder_path, fallback_file):
-    """按自然文件名升序，取最新一张导出的 .xlsx"""
+    """按文件实际修改时间 (mtime) 绝对精准获取最新落盘文件"""
     if os.path.exists(folder_path):
         excel_files = [
-            f
-            for f in glob.glob(os.path.join(folder_path, "*.xlsx"))
-            if not os.path.basename(f).startswith("~$")
+            os.path.join(folder_path, f)
+            for f in os.listdir(folder_path)
+            if f.endswith(".xlsx") and not f.startswith("~$")
         ]
         if excel_files:
-            return sorted(excel_files)[-1]
+            return max(excel_files, key=os.path.getmtime)
 
     if os.path.exists(fallback_file):
         return fallback_file
@@ -170,7 +146,7 @@ def get_latest_excel_path(folder_path, fallback_file):
     return None
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=120)  # 2分钟保底自动穿透缓存
 def load_and_clean_raw_cached(
     raw_file_path, dict_file_path, raw_mtime, dict_mtime
 ):
@@ -265,7 +241,7 @@ def load_and_clean_raw_cached(
     return df_raw
 
 
-# =================【主页面渲染】=================
+# =================【获取文件与状态生命周期检测】=================
 cfg = PLATFORMS["Tim"]
 file_path = get_latest_excel_path(cfg["folder"], cfg["fallback_file"])
 
@@ -282,6 +258,17 @@ dict_mtime = (
     else 0
 )
 
+# 核心防死锁机制：如果检测到磁盘生成了新文件或修改时间变化，强制清空旧的控件状态
+if st.session_state.get("_last_mtime") != raw_mtime:
+    st.session_state["_last_mtime"] = raw_mtime
+    for k in [
+        "main_date_range_tim",
+        "pivot_date_range_tim",
+        "raw_date_range_tim",
+    ]:
+        if k in st.session_state:
+            del st.session_state[k]
+
 df_raw = load_and_clean_raw_cached(
     file_path, cfg["dict_file"], raw_mtime, dict_mtime
 )
@@ -290,6 +277,48 @@ if df_raw.empty:
     st.warning(f"⚠️ `{file_path}` 中暂无有效流水数据。")
     st.stop()
 
+# =================【侧边栏控制面板】=================
+with st.sidebar:
+    st.header("⚙️ 中台系统控制")
+    if st.button("🔄 立即刷新 / 同步最新数据", use_container_width=True):
+        try:
+            pull_res = subprocess.run(
+                ["git", "pull"], capture_output=True, text=True, timeout=15
+            )
+            git_msg = (
+                pull_res.stdout.strip()
+                if pull_res.stdout
+                else pull_res.stderr.strip()
+            )
+        except Exception:
+            git_msg = "本地直读"
+
+        st.cache_data.clear()
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+
+        st.success(f"✅ 同步完成！({git_msg})")
+        st.rerun()
+
+    # 纯前端 60 秒无感静默轮询（免装额外三方库）
+    auto_refresh = st.checkbox("⏱️ 开启 60 秒自动静默轮询", value=True)
+    if auto_refresh:
+        st.markdown(
+            """
+            <script>
+            setTimeout(function(){
+                window.location.reload();
+            }, 60000);
+            </script>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+    st.caption("🛠️ Tim 买量消耗大盘与流水对账系统 ｜ White制作")
+
+
+# =================【主页面渲染】=================
 mtime_str = get_display_file_time(file_path, raw_mtime)
 dict_status = (
     f"✅ 已关联 `{cfg['dict_file']}`"
@@ -298,7 +327,7 @@ dict_status = (
 )
 
 st.caption(
-    f"📁 实时载入流水: `{file_path}` ｜ 🕒 导出时间: **{mtime_str}** ｜ 📖 字典状态: {dict_status} ｜ ⚡ 内存缓存已激活"
+    f"📁 实时载入流水: `{file_path}` ｜ 🕒 导出时间: **{mtime_str}** ｜ 📖 字典状态: {dict_status} ｜ ⚡ 动态感知已就绪"
 )
 
 # ----------------------------------------------------
@@ -389,7 +418,7 @@ if selected_main_status and "交易状态" in df_main_filtered.columns:
     ]
 
 # ----------------------------------------------------
-# 顶部核心 KPI 指标卡 (5 列驾驶舱)
+# 顶部核心 KPI 指标卡 (4 列驾驶舱)
 # ----------------------------------------------------
 latest_global_date = (
     df_raw["交易日期"].max() if "交易日期" in df_raw.columns else None
@@ -481,7 +510,6 @@ if not df_declined_all.empty:
 
     affected_cards_cnt = df_declined_all["卡号"].nunique()
 
-    # 今日有拒付则默认展开，无则折叠
     with st.expander(
         f"🚨 【Tim】拒付熔断监控雷达（💥 今日拒付: {today_dec_cnt} 笔 ｜ 累计拒付: {total_dec_cnt} 笔 ｜ 涉及 {affected_cards_cnt} 张卡）",
         expanded=(today_dec_cnt > 0),
@@ -941,9 +969,7 @@ if not df_raw.empty:
             r_max_date = df_raw["交易日期"].max()
             selected_raw_date_range = st.date_input(
                 "📅 交易日期范围",
-                value=(r_min_date, r_max_date)
-                if (r_min_date and r_max_date)
-                else datetime.now().date(),
+                value=(r_min_date, r_max_date),
                 min_value=r_min_date,
                 max_value=r_max_date,
                 key="raw_date_range_tim",
