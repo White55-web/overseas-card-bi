@@ -7,7 +7,7 @@ import plotly.express as px
 import requests
 import streamlit as st
 
-# =================【1. 页面基本配置与全局移动端响应式 UI】=================
+# =================【1. 页面基本配置与 Apple HIG 设计系统】=================
 st.set_page_config(
     page_title="Tim 卡台数据看板",
     page_icon="⚡",
@@ -21,87 +21,126 @@ BEIJING_TZ = timezone(timedelta(hours=8))
 st.markdown(
     """
     <style>
-    /* 全局字体与版心微调 */
+    /* ================= 🍎 苹果极简设计系统 (Apple HIG) ================= */
+    
+    /* 1. 字体层级与温和画布背景 */
     html, body, [class*="css"] {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+        -webkit-font-smoothing: antialiased;
+        color: #1d1d1f;
+        background-color: #f5f5f7;
     }
+    
     .main .block-container {
-        padding-top: 1.2rem;
-        padding-bottom: 2.5rem;
-        max-width: 98%;
+        padding-top: 1.4rem;
+        padding-bottom: 3rem;
+        max-width: 96%;
     }
 
-    /* 顶部 KPI Metric 指标卡片立体化与自适应 */
+    /* 2. 毛玻璃立体指标卡片 (Glassmorphism Metrics) */
     [data-testid="stMetric"] {
-        background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        padding: 12px 14px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        background: rgba(255, 255, 255, 0.82) !important;
+        backdrop-filter: saturate(180%) blur(20px) !important;
+        -webkit-backdrop-filter: saturate(180%) blur(20px) !important;
+        border: 1px solid rgba(0, 0, 0, 0.05) !important;
+        border-radius: 16px !important;
+        padding: 15px 18px !important;
+        box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03), 0 2px 6px -1px rgba(0, 0, 0, 0.02) !important;
+        transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.25s cubic-bezier(0.25, 1, 0.5, 1) !important;
+    }
+    [data-testid="stMetric"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.06), 0 4px 10px -2px rgba(0, 0, 0, 0.03) !important;
     }
     [data-testid="stMetricLabel"] {
         font-size: 0.82rem !important;
-        font-weight: 600 !important;
-        color: #64748b !important;
-        white-space: normal !important;
+        font-weight: 500 !important;
+        color: #86868b !important;
+        letter-spacing: -0.01em !important;
+        margin-bottom: 4px !important;
     }
     [data-testid="stMetricValue"] {
-        font-size: 1.35rem !important;
-        font-weight: 700 !important;
-        color: #0f172a !important;
+        font-size: 1.55rem !important;
+        font-weight: 600 !important;
+        color: #1d1d1f !important;
+        letter-spacing: -0.025em !important;
     }
 
-    /* 标签页 Tabs 现代圆角胶囊样式 (支持手机端横向自然滑动) */
+    /* 3. iOS 胶囊分段控制器 (Segmented Control Tabs) */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 6px;
-        background-color: #f1f5f9;
-        padding: 5px;
-        border-radius: 10px;
+        gap: 3px;
+        background-color: rgba(120, 120, 128, 0.12) !important;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        padding: 3px;
+        border-radius: 11px !important;
         overflow-x: auto;
         flex-wrap: nowrap;
-        -webkit-overflow-scrolling: touch;
+        border: none !important;
     }
     .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        padding: 6px 14px;
-        font-size: 0.85rem;
-        font-weight: 600;
+        border-radius: 8px !important;
+        padding: 6px 16px !important;
+        font-size: 0.84rem !important;
+        font-weight: 500 !important;
+        color: #636366 !important;
         border: none !important;
-        background-color: transparent;
+        background-color: transparent !important;
+        transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1) !important;
         white-space: nowrap;
     }
     .stTabs [aria-selected="true"] {
         background-color: #ffffff !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.06) !important;
-        color: #2563eb !important;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+        color: #1d1d1f !important;
+        font-weight: 600 !important;
     }
 
-    /* 折叠面板平滑化 */
+    /* 4. 卡片化折叠面板 (Apple Style Expander) */
     [data-testid="stExpander"] {
-        border: 1px solid #e2e8f0 !important;
-        border-radius: 10px !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        background: rgba(255, 255, 255, 0.85) !important;
+        backdrop-filter: saturate(180%) blur(20px) !important;
+        border: 1px solid rgba(0, 0, 0, 0.05) !important;
+        border-radius: 16px !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02) !important;
+    }
+    
+    /* 5. 按钮精修 (Cupertino Button) */
+    .stButton > button {
+        border-radius: 11px !important;
+        border: 1px solid rgba(0, 0, 0, 0.06) !important;
+        background-color: #ffffff !important;
+        color: #0071e3 !important;
+        font-weight: 600 !important;
+        font-size: 0.88rem !important;
+        padding: 8px 16px !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02) !important;
+        transition: all 0.2s ease !important;
+    }
+    .stButton > button:hover {
+        background-color: #f2f7ff !important;
+        border-color: rgba(0, 113, 227, 0.25) !important;
+        color: #0077ed !important;
     }
 
-    /* 手机端专属响应式补丁 (屏幕宽度 < 768px) */
+    /* 6. 📱 手机端专属精致排版 */
     @media (max-width: 768px) {
         .main .block-container {
-            padding-left: 0.6rem !important;
-            padding-right: 0.6rem !important;
-            padding-top: 0.8rem !important;
+            padding-left: 0.8rem !important;
+            padding-right: 0.8rem !important;
+            padding-top: 1rem !important;
             max-width: 100% !important;
         }
         [data-testid="stMetric"] {
-            padding: 8px 10px !important;
+            padding: 10px 12px !important;
             margin-bottom: 6px !important;
+            border-radius: 13px !important;
         }
         [data-testid="stMetricLabel"] {
-            font-size: 0.72rem !important;
+            font-size: 0.75rem !important;
         }
         [data-testid="stMetricValue"] {
-            font-size: 1.08rem !important;
-            word-break: break-all;
+            font-size: 1.18rem !important;
         }
         div[data-testid="column"] {
             min-width: 100% !important;
@@ -192,7 +231,7 @@ def fetch_latest_dataset(owner, repo, folder_name, dict_name, fallback_file):
                 if file_resp.status_code == 200:
                     stream = io.BytesIO(file_resp.content)
                     dt_obj = extract_file_datetime(file_name)
-                    return stream, file_name, dt_obj, "GitHub API 在线直连"
+                    return stream, file_name, dt_obj, "GitHub 在线流"
     except Exception:
         pass
 
@@ -206,14 +245,14 @@ def fetch_latest_dataset(owner, repo, folder_name, dict_name, fallback_file):
             latest_local = max(local_files, key=extract_file_datetime)
             file_name = os.path.basename(latest_local)
             dt_obj = extract_file_datetime(latest_local)
-            return latest_local, file_name, dt_obj, "本地容器缓存"
+            return latest_local, file_name, dt_obj, "本地缓存"
 
     if fallback_file and os.path.exists(fallback_file):
         return (
             fallback_file,
             os.path.basename(fallback_file),
             datetime.min,
-            "备用文件",
+            "备用源",
         )
 
     return None, "未找到数据", datetime.min, "无可用源"
@@ -354,15 +393,15 @@ if df_raw.empty:
 
 # =================【7. 侧边栏控制面板】=================
 with st.sidebar:
-    st.header("⚙️ 中台系统控制")
-    if st.button("🔄 立即刷新 / 获取最新数据", use_container_width=True):
+    st.header("⚙️ 偏好设置")
+    if st.button("🔄 同步并清空缓存", use_container_width=True):
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
             del st.session_state[key]
-        st.success("✅ 缓存已清空，正在重连 GitHub API...")
+        st.success("✅ 缓存已就绪，正在获取最新数据...")
         st.rerun()
 
-    auto_refresh = st.checkbox("⏱️ 开启 60 秒自动静默轮询", value=False)
+    auto_refresh = st.checkbox("⏱️ 60 秒自动静默轮询", value=False)
     if auto_refresh:
         st.markdown(
             """
@@ -376,7 +415,7 @@ with st.sidebar:
         )
 
     st.markdown("---")
-    st.caption("🛠️ Tim 买量消耗大盘与流水对账系统 ｜ White制作")
+    st.caption("Designed with Apple HIG ｜ White 制作")
 
 
 # =================【8. 主页面渲染】=================
@@ -386,13 +425,13 @@ mtime_str = (
     else "历史备份"
 )
 dict_status = (
-    f"✅ 已关联 `{DICT_FILE_NAME}`"
+    f"已关联 `{DICT_FILE_NAME}`"
     if os.path.exists(DICT_FILE_NAME)
-    else f"⚠️ 缺少字典 (显示为未分配)"
+    else "缺少字典"
 )
 
 st.caption(
-    f"📁 载入流水: `{current_filename}` ｜ 🕒 导出: **{mtime_str}** ｜ 📡 `{source_channel}` ｜ 📖 {dict_status}"
+    f"📁 `{current_filename}` ｜ 🕒 导出: **{mtime_str}** ｜ 📡 `{source_channel}` ｜ 📖 {dict_status}"
 )
 
 # ----------------------------------------------------
@@ -483,7 +522,7 @@ if selected_main_status and "交易状态" in df_main_filtered.columns:
     ]
 
 # ----------------------------------------------------
-# 顶部核心 KPI 指标卡
+# 顶部核心 KPI 指标卡 (Apple HIG 4 列毛玻璃驾驶舱)
 # ----------------------------------------------------
 latest_global_date = (
     df_raw["交易日期"].max() if "交易日期" in df_raw.columns else None
@@ -520,31 +559,31 @@ active_card_cnt = (
 k1, k2, k3, k4 = st.columns(4)
 with k1:
     st.metric(
-        label="💰 筛选总消耗 (PENDING)",
+        label="筛选总消耗 (PENDING)",
         value=f"${pending_spend:,.2f}",
         help="当前筛选日期与 UA 范围内的 PENDING 消耗总计",
     )
 with k2:
     st.metric(
-        label=f"🔥 今日全盘消耗 ({latest_global_date})",
+        label=f"今日全盘消耗 ({latest_global_date})",
         value=f"${today_pending_sum:,.2f}",
         help=f"最新数据日 ({latest_global_date}) 截至目前的 PENDING 扣款总额",
     )
 with k3:
     st.metric(
-        label="💳 PENDING 活跃卡数",
+        label="PENDING 活跃卡数",
         value=f"{active_card_cnt} 张",
         help="当前筛选范围内产生扣费的独立活跃卡数",
     )
 with k4:
     st.metric(
-        label="✅ COMPLETE 历史结算",
+        label="COMPLETE 历史结算",
         value=f"${complete_spend:,.2f}",
         help="当前筛选范围内已入账结算的 COMPLETE 金额",
     )
 
 # ----------------------------------------------------
-# 板块 1：中部趋势图表 (全量锁定坐标轴，彻底杜绝手机误触缩放)
+# 板块 1：中部趋势图表 (Apple HIG 系统色系 + 锁定防误触)
 # ----------------------------------------------------
 chart1, chart2 = st.columns(2)
 with chart1:
@@ -563,25 +602,29 @@ with chart1:
             x="交易日期",
             y="交易金额",
             color="交易状态",
-            title="📅 Tim - 每日消耗与状态趋势",
+            title="每日消耗与状态趋势",
             barmode="stack",
             template="plotly_white",
+            # 🍎 Apple iOS HIG 系统标准色
             color_discrete_map={
-                "PENDING": "#2563eb",
-                "COMPLETE": "#10b981",
-                "REVERSED": "#f59e0b",
-                "DECLINED": "#ef4444",
-                "FAILED": "#ef4444",
+                "PENDING": "#007AFF",     # iOS System Blue
+                "COMPLETE": "#34C759",    # iOS System Green
+                "REVERSED": "#FF9500",    # iOS System Orange
+                "DECLINED": "#FF3B30",    # iOS System Red
+                "FAILED": "#FF3B30",      # iOS System Red
             },
         )
         fig_trend.update_layout(
-            font_family="-apple-system, BlinkMacSystemFont, Segoe UI",
-            title=dict(text="📅 Tim - 每日消耗与状态趋势", x=0, xanchor="left"),
-            title_font_size=14,
+            font_family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+            title=dict(text="<b>每日消耗与状态趋势</b>", x=0, xanchor="left"),
+            title_font_size=15,
+            title_font_color="#1d1d1f",
             legend_title_text="",
-            dragmode=False,  # 彻底禁止拖拽框选
-            xaxis=dict(fixedrange=True),  # 锁定 X 轴禁止缩放
-            yaxis=dict(fixedrange=True),  # 锁定 Y 轴禁止缩放
+            dragmode=False,
+            xaxis=dict(fixedrange=True, showgrid=False),
+            yaxis=dict(fixedrange=True, gridcolor="rgba(0,0,0,0.05)"),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
             legend=dict(
                 orientation="h",
                 yanchor="top",
@@ -620,21 +663,33 @@ with chart2:
             .reset_index()
             .sort_values(by="交易金额", ascending=False)
         )
+        # 🍎 Apple HIG 柔和高阶配色组
+        apple_pie_colors = [
+            "#007AFF", "#5856D6", "#AF52DE", "#FF2D55", 
+            "#FF9500", "#FFCC00", "#34C759", "#5AC8FA", "#8E8E93"
+        ]
         fig_ua = px.pie(
             ua_data,
             names="UA名字",
             values="交易金额",
-            title="🎯 Tim - 投放团队 PENDING 消耗占比",
-            hole=0.45,
+            title="投放团队 PENDING 消耗占比",
+            hole=0.52,  # 雅致苹果环形比例
             template="plotly_white",
-            color_discrete_sequence=px.colors.qualitative.Pastel,
+            color_discrete_sequence=apple_pie_colors,
         )
-        fig_ua.update_traces(textposition="inside", textinfo="percent+label")
+        fig_ua.update_traces(
+            textposition="inside", 
+            textinfo="percent+label",
+            marker=dict(line=dict(color="#ffffff", width=2))
+        )
         fig_ua.update_layout(
-            font_family="-apple-system, BlinkMacSystemFont, Segoe UI",
-            title=dict(text="🎯 Tim - 投放团队 PENDING 消耗占比", x=0, xanchor="left"),
-            title_font_size=14,
+            font_family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+            title=dict(text="<b>投放团队 PENDING 消耗占比</b>", x=0, xanchor="left"),
+            title_font_size=15,
+            title_font_color="#1d1d1f",
             dragmode=False,
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
             legend=dict(
                 orientation="h",
                 yanchor="top",
@@ -659,7 +714,7 @@ st.markdown("---")
 # ----------------------------------------------------
 # 板块 2：单卡每日消耗透视 (仅统计 PENDING)
 # ----------------------------------------------------
-st.subheader("💳 Tim 单卡每日消耗透视 (仅统计 PENDING)")
+st.subheader("💳 单卡每日消耗透视 (仅统计 PENDING)")
 
 df_pending = (
     df_raw[df_raw["交易状态"] == "PENDING"]
@@ -681,7 +736,7 @@ if (
             "💳 筛选卡号",
             options=card_options,
             default=[],
-            placeholder="支持搜索/勾选卡号（留空全选）",
+            placeholder="搜索/勾选卡号（留空全选）",
             key="pivot_card_tim",
         )
 
@@ -755,11 +810,11 @@ if (
 
         s_c1, s_c2, s_c3 = st.columns(3)
         with s_c1:
-            st.metric("💰 当前筛选总消耗 (SUM)", f"${sum_spend:,.2f}")
+            st.metric("筛选总消耗 (SUM)", f"${sum_spend:,.2f}")
         with s_c2:
-            st.metric("💳 涉及活跃卡号数", f"{sum_cards} 张")
+            st.metric("涉及活跃卡号数", f"{sum_cards} 张")
         with s_c3:
-            st.metric("📝 累计扣费总笔数", f"{sum_tx} 笔")
+            st.metric("累计扣费总笔数", f"{sum_tx} 笔")
 
         view_tab1, view_tab2, view_tab3 = st.tabs(
             [
@@ -869,7 +924,7 @@ if (
                     use_container_width=True,
                 )
             else:
-                st.info("💡 当前数据源无 UA 归属信息。")
+                st.info("当前数据源无 UA 归属信息。")
 
         with view_tab3:
             pivot_index = (
@@ -896,7 +951,7 @@ if (
             )
             st.dataframe(pivot_display, use_container_width=True)
     else:
-        st.info("💡 筛选条件下未找到匹配的 PENDING 流水。")
+        st.info("筛选条件下未找到匹配的 PENDING 流水。")
 else:
     st.info("当前所选筛选条件下暂无 PENDING 交易数据。")
 
@@ -905,7 +960,7 @@ st.markdown("---")
 # ----------------------------------------------------
 # 板块 3：全量明细流水对账
 # ----------------------------------------------------
-st.subheader("📋 Tim 全量流水对账")
+st.subheader("📋 全量流水对账")
 
 if not df_raw.empty:
     r_col1, r_col2, r_col3 = st.columns(3)
@@ -920,7 +975,7 @@ if not df_raw.empty:
             "💳 筛选卡号",
             options=raw_card_options,
             default=[],
-            placeholder="支持搜索/勾选卡号（留空全选）",
+            placeholder="搜索/勾选卡号（留空全选）",
             key="raw_card_tim",
         )
 
