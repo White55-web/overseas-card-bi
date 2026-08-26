@@ -12,7 +12,7 @@ st.set_page_config(
     page_title="Tim 卡台数据看板",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="collapsed",  # 手机端默认收起侧边栏
+    initial_sidebar_state="collapsed",
 )
 
 # 强制定义北京时间 (UTC+8)
@@ -103,7 +103,6 @@ st.markdown(
             font-size: 1.08rem !important;
             word-break: break-all;
         }
-        /* 避免筛选下拉框在手机端挤压 */
         div[data-testid="column"] {
             min-width: 100% !important;
             margin-bottom: 6px !important;
@@ -484,7 +483,7 @@ if selected_main_status and "交易状态" in df_main_filtered.columns:
     ]
 
 # ----------------------------------------------------
-# 顶部核心 KPI 指标卡 (移动端自适应排版)
+# 顶部核心 KPI 指标卡
 # ----------------------------------------------------
 latest_global_date = (
     df_raw["交易日期"].max() if "交易日期" in df_raw.columns else None
@@ -545,7 +544,7 @@ with k4:
     )
 
 # ----------------------------------------------------
-# 板块 1：中部趋势图表（优化手机端图例位置，防止画面变形）
+# 板块 1：中部趋势图表 (已彻底清除工具栏遮挡，图例底置)
 # ----------------------------------------------------
 chart1, chart2 = st.columns(2)
 with chart1:
@@ -577,19 +576,24 @@ with chart1:
         )
         fig_trend.update_layout(
             font_family="-apple-system, BlinkMacSystemFont, Segoe UI",
+            title=dict(text="📅 Tim - 每日消耗与状态趋势", x=0, xanchor="left"),
             title_font_size=14,
             legend_title_text="",
             legend=dict(
                 orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1,
+                yanchor="top",
+                y=-0.18,
+                xanchor="center",
+                x=0.5,
             ),
-            margin=dict(l=5, r=5, t=40, b=10),
+            margin=dict(l=10, r=10, t=35, b=45),
             hovermode="x unified",
         )
-        st.plotly_chart(fig_trend, use_container_width=True)
+        st.plotly_chart(
+            fig_trend,
+            use_container_width=True,
+            config={"displayModeBar": False},
+        )
 
 with chart2:
     if (
@@ -620,17 +624,22 @@ with chart2:
         fig_ua.update_traces(textposition="inside", textinfo="percent+label")
         fig_ua.update_layout(
             font_family="-apple-system, BlinkMacSystemFont, Segoe UI",
+            title=dict(text="🎯 Tim - 投放团队 PENDING 消耗占比", x=0, xanchor="left"),
             title_font_size=14,
             legend=dict(
                 orientation="h",
                 yanchor="top",
-                y=-0.1,
+                y=-0.15,
                 xanchor="center",
                 x=0.5,
             ),
-            margin=dict(l=5, r=5, t=40, b=20),
+            margin=dict(l=10, r=10, t=35, b=40),
         )
-        st.plotly_chart(fig_ua, use_container_width=True)
+        st.plotly_chart(
+            fig_ua,
+            use_container_width=True,
+            config={"displayModeBar": False},
+        )
 
 st.markdown("---")
 
