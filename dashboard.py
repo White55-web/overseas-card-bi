@@ -7,12 +7,12 @@ import plotly.express as px
 import requests
 import streamlit as st
 
-# =================【1. 页面基本配置与全局高颜值 UI】=================
+# =================【1. 页面基本配置与全局移动端响应式 UI】=================
 st.set_page_config(
     page_title="Tim 卡台数据看板",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",  # 手机端默认收起侧边栏
 )
 
 # 强制定义北京时间 (UTC+8)
@@ -26,50 +26,50 @@ st.markdown(
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
     .main .block-container {
-        padding-top: 1.6rem;
-        padding-bottom: 3rem;
-        max-width: 96%;
+        padding-top: 1.2rem;
+        padding-bottom: 2.5rem;
+        max-width: 98%;
     }
 
-    /* 顶部 KPI Metric 指标卡片立体化与悬浮动效 */
+    /* 顶部 KPI Metric 指标卡片立体化与自适应 */
     [data-testid="stMetric"] {
         background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
         border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 14px 18px;
+        border-radius: 10px;
+        padding: 12px 14px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
         transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
-    [data-testid="stMetric"]:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
-        border-color: #cbd5e1;
-    }
     [data-testid="stMetricLabel"] {
-        font-size: 0.84rem !important;
+        font-size: 0.82rem !important;
         font-weight: 600 !important;
         color: #64748b !important;
+        white-space: normal !important;
     }
     [data-testid="stMetricValue"] {
-        font-size: 1.45rem !important;
+        font-size: 1.35rem !important;
         font-weight: 700 !important;
         color: #0f172a !important;
     }
 
-    /* 标签页 Tabs 现代圆角胶囊样式 */
+    /* 标签页 Tabs 现代圆角胶囊样式 (支持手机端横向自然滑动) */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
+        gap: 6px;
         background-color: #f1f5f9;
-        padding: 6px;
+        padding: 5px;
         border-radius: 10px;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        -webkit-overflow-scrolling: touch;
     }
     .stTabs [data-baseweb="tab"] {
         border-radius: 8px;
-        padding: 8px 18px;
+        padding: 6px 14px;
+        font-size: 0.85rem;
         font-weight: 600;
         border: none !important;
         background-color: transparent;
-        transition: all 0.2s ease;
+        white-space: nowrap;
     }
     .stTabs [aria-selected="true"] {
         background-color: #ffffff !important;
@@ -82,6 +82,32 @@ st.markdown(
         border: 1px solid #e2e8f0 !important;
         border-radius: 10px !important;
         box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+
+    /* ================= 📱 手机端专属响应式补丁 (屏幕宽度 < 768px) ================= */
+    @media (max-width: 768px) {
+        .main .block-container {
+            padding-left: 0.6rem !important;
+            padding-right: 0.6rem !important;
+            padding-top: 0.8rem !important;
+            max-width: 100% !important;
+        }
+        [data-testid="stMetric"] {
+            padding: 8px 10px !important;
+            margin-bottom: 6px !important;
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 0.72rem !important;
+        }
+        [data-testid="stMetricValue"] {
+            font-size: 1.08rem !important;
+            word-break: break-all;
+        }
+        /* 避免筛选下拉框在手机端挤压 */
+        div[data-testid="column"] {
+            min-width: 100% !important;
+            margin-bottom: 6px !important;
+        }
     }
     </style>
     """,
@@ -98,7 +124,6 @@ FALLBACK_LOCAL_FILE = "Tim 清洗操作.xlsx"
 
 # =================【3. 纯算法时间解析与卡号向量化】=================
 def extract_file_datetime(filepath_or_name):
-    """精准时间提取引擎（纯算法，绝不调用物理文件时间）"""
     if not filepath_or_name:
         return datetime.min
 
@@ -127,7 +152,6 @@ def extract_file_datetime(filepath_or_name):
 
 
 def normalize_card_series(series):
-    """向量化快速格式化卡号：剥离 .0 并向左补零到 4 位"""
     if series is None or series.empty:
         return pd.Series(dtype=str)
     s = series.astype(str).str.strip()
@@ -146,7 +170,6 @@ def fetch_latest_dataset(owner, repo, folder_name, dict_name, fallback_file):
         f"https://api.github.com/repos/{owner}/{repo}/contents/{folder_name}"
     )
 
-    # 尝试轨 1：GitHub 在线 API
     try:
         resp = requests.get(api_url, headers=headers, timeout=6)
         if resp.status_code == 200:
@@ -174,7 +197,6 @@ def fetch_latest_dataset(owner, repo, folder_name, dict_name, fallback_file):
     except Exception:
         pass
 
-    # 尝试轨 2：本地磁盘专属文件夹兜底
     if os.path.exists(folder_name):
         local_files = [
             os.path.join(folder_name, f)
@@ -187,7 +209,6 @@ def fetch_latest_dataset(owner, repo, folder_name, dict_name, fallback_file):
             dt_obj = extract_file_datetime(latest_local)
             return latest_local, file_name, dt_obj, "本地容器缓存"
 
-    # 尝试轨 3：备用单文件兜底
     if fallback_file and os.path.exists(fallback_file):
         return (
             fallback_file,
@@ -237,7 +258,6 @@ def load_and_clean_raw_cached(
     else:
         df_raw["match_key"] = ""
 
-    # 字典匹配 UA 归属
     if dict_file_path and os.path.exists(dict_file_path):
         try:
             df_dict = pd.read_excel(dict_file_path)
@@ -314,7 +334,6 @@ raw_timestamp = (
     latest_dt_obj.timestamp() if latest_dt_obj != datetime.min else 0
 )
 
-# 动态重置筛选状态（当检测到新数据进场时自动展期）
 if st.session_state.get("_last_raw_timestamp") != raw_timestamp:
     st.session_state["_last_raw_timestamp"] = raw_timestamp
     for k in [
@@ -344,7 +363,7 @@ with st.sidebar:
         st.success("✅ 缓存已清空，正在重连 GitHub API...")
         st.rerun()
 
-    auto_refresh = st.checkbox("⏱️ 开启 60 秒自动静默轮询", value=True)
+    auto_refresh = st.checkbox("⏱️ 开启 60 秒自动静默轮询", value=False)
     if auto_refresh:
         st.markdown(
             """
@@ -374,7 +393,7 @@ dict_status = (
 )
 
 st.caption(
-    f"📁 载入流水: `{current_filename}` ｜ 🕒 导出时间: **{mtime_str}** ｜ 📡 通道: `{source_channel}` ｜ 📖 字典: {dict_status} ｜ ⚡ 极速缓存已就绪"
+    f"📁 载入流水: `{current_filename}` ｜ 🕒 导出: **{mtime_str}** ｜ 📡 `{source_channel}` ｜ 📖 {dict_status}"
 )
 
 # ----------------------------------------------------
@@ -465,7 +484,7 @@ if selected_main_status and "交易状态" in df_main_filtered.columns:
     ]
 
 # ----------------------------------------------------
-# 顶部核心 KPI 指标卡 (原版 4 列驾驶舱)
+# 顶部核心 KPI 指标卡 (移动端自适应排版)
 # ----------------------------------------------------
 latest_global_date = (
     df_raw["交易日期"].max() if "交易日期" in df_raw.columns else None
@@ -526,7 +545,7 @@ with k4:
     )
 
 # ----------------------------------------------------
-# 板块 1：中部趋势图表（柱状图 + 环形饼图）
+# 板块 1：中部趋势图表（优化手机端图例位置，防止画面变形）
 # ----------------------------------------------------
 chart1, chart2 = st.columns(2)
 with chart1:
@@ -558,9 +577,16 @@ with chart1:
         )
         fig_trend.update_layout(
             font_family="-apple-system, BlinkMacSystemFont, Segoe UI",
-            title_font_size=15,
+            title_font_size=14,
             legend_title_text="",
-            margin=dict(l=10, r=10, t=40, b=10),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+            ),
+            margin=dict(l=5, r=5, t=40, b=10),
             hovermode="x unified",
         )
         st.plotly_chart(fig_trend, use_container_width=True)
@@ -594,8 +620,15 @@ with chart2:
         fig_ua.update_traces(textposition="inside", textinfo="percent+label")
         fig_ua.update_layout(
             font_family="-apple-system, BlinkMacSystemFont, Segoe UI",
-            title_font_size=15,
-            margin=dict(l=10, r=10, t=40, b=10),
+            title_font_size=14,
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.1,
+                xanchor="center",
+                x=0.5,
+            ),
+            margin=dict(l=5, r=5, t=40, b=20),
         )
         st.plotly_chart(fig_ua, use_container_width=True)
 
