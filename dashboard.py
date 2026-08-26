@@ -84,7 +84,7 @@ st.markdown(
         box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
 
-    /* ================= 📱 手机端专属响应式补丁 (屏幕宽度 < 768px) ================= */
+    /* 手机端专属响应式补丁 (屏幕宽度 < 768px) */
     @media (max-width: 768px) {
         .main .block-container {
             padding-left: 0.6rem !important;
@@ -544,7 +544,7 @@ with k4:
     )
 
 # ----------------------------------------------------
-# 板块 1：中部趋势图表 (已彻底清除工具栏遮挡，图例底置)
+# 板块 1：中部趋势图表 (全量锁定坐标轴，彻底杜绝手机误触缩放)
 # ----------------------------------------------------
 chart1, chart2 = st.columns(2)
 with chart1:
@@ -579,6 +579,9 @@ with chart1:
             title=dict(text="📅 Tim - 每日消耗与状态趋势", x=0, xanchor="left"),
             title_font_size=14,
             legend_title_text="",
+            dragmode=False,  # 彻底禁止拖拽框选
+            xaxis=dict(fixedrange=True),  # 锁定 X 轴禁止缩放
+            yaxis=dict(fixedrange=True),  # 锁定 Y 轴禁止缩放
             legend=dict(
                 orientation="h",
                 yanchor="top",
@@ -592,7 +595,12 @@ with chart1:
         st.plotly_chart(
             fig_trend,
             use_container_width=True,
-            config={"displayModeBar": False},
+            config={
+                "displayModeBar": False,
+                "scrollZoom": False,
+                "doubleClick": False,
+                "showAxisDragHandles": False,
+            },
         )
 
 with chart2:
@@ -626,6 +634,7 @@ with chart2:
             font_family="-apple-system, BlinkMacSystemFont, Segoe UI",
             title=dict(text="🎯 Tim - 投放团队 PENDING 消耗占比", x=0, xanchor="left"),
             title_font_size=14,
+            dragmode=False,
             legend=dict(
                 orientation="h",
                 yanchor="top",
@@ -638,7 +647,11 @@ with chart2:
         st.plotly_chart(
             fig_ua,
             use_container_width=True,
-            config={"displayModeBar": False},
+            config={
+                "displayModeBar": False,
+                "scrollZoom": False,
+                "doubleClick": False,
+            },
         )
 
 st.markdown("---")
