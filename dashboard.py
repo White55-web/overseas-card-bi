@@ -96,20 +96,14 @@ DICT_FILE_NAME = "Tim字典.xlsx"
 FALLBACK_LOCAL_FILE = "Tim 清洗操作.xlsx"
 
 
-# =================【3. 纯算法时间解析引擎】=================
+# =================【3. 纯算法时间解析与卡号向量化】=================
 def extract_file_datetime(filepath_or_name):
-    """
-    精准时间提取引擎（纯算法，绝不调用物理文件时间）：
-    1. 匹配 Tim_2026-08-25 21_42_16.xlsx 等秒级时间戳
-    2. 匹配 2026-08-25 等日期格式
-    3. 无时间的文件直接返回 datetime.min，杜绝物理修改时间篡位
-    """
+    """精准时间提取引擎（纯算法，绝不调用物理文件时间）"""
     if not filepath_or_name:
         return datetime.min
 
     filename = os.path.basename(str(filepath_or_name))
 
-    # 1. 匹配标准秒级格式 (YYYY-MM-DD HH_MM_SS 或 HH-MM-SS 或 HH:MM:SS)
     match_sec = re.search(
         r"(\d{4})[-_](\d{2})[-_](\d{2})[\s_]+(\d{2})[-_:](\d{2})[-_:](\d{2})",
         filename,
@@ -121,7 +115,6 @@ def extract_file_datetime(filepath_or_name):
         except Exception:
             pass
 
-    # 2. 匹配短日期格式 (YYYY-MM-DD 或 YYYYMMDD)
     match_day = re.search(r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})", filename)
     if match_day:
         try:
@@ -133,14 +126,18 @@ def extract_file_datetime(filepath_or_name):
     return datetime.min
 
 
-# =================【4. GitHub API 在线直读 + 本地双轨引擎】=================
-@st.cache_data(ttl=15, show_spinner=False)  # 15秒缓存穿透
+def normalize_card_series(series):
+    """向量化快速格式化卡号：剥离 .0 并向左补零到 4 位"""
+    if series is None or series.empty:
+        return pd.Series(dtype=str)
+    s = series.astype(str).str.strip()
+    s = s.str.replace(r"\.0$", "", regex=True)
+    return s.str[-4:].str.zfill(4)
+
+
+# =================【4. GitHub API 在线直读 + 本地双轨引擎 (带缓存)】=================
+@st.cache_data(ttl=20, show_spinner=False)
 def fetch_latest_dataset(owner, repo, folder_name, dict_name, fallback_file):
-    """
-    双轨自适应加载：
-    1. 优先通过 GitHub REST API 在线拉取最新 Excel 流（无视浅克隆与容器磁盘延迟）
-    2. 网络失败或离线时，自动切换为本地目录读取
-    """
     headers = {
         "Accept": "application/vnd.github.v3+json",
         "User-Agent": "Streamlit-BI-App",
@@ -169,7 +166,6 @@ def fetch_latest_dataset(owner, repo, folder_name, dict_name, fallback_file):
                 file_name = latest_item["name"]
                 dl_url = latest_item["download_url"]
 
-                # 在线下载二进制流
                 file_resp = requests.get(dl_url, headers=headers, timeout=12)
                 if file_resp.status_code == 200:
                     stream = io.BytesIO(file_resp.content)
@@ -193,28 +189,21 @@ def fetch_latest_dataset(owner, repo, folder_name, dict_name, fallback_file):
 
     # 尝试轨 3：备用单文件兜底
     if fallback_file and os.path.exists(fallback_file):
-        return fallback_file, os.path.basename(fallback_file), datetime.min, "备用文件"
+        return (
+            fallback_file,
+            os.path.basename(fallback_file),
+            datetime.min,
+            "备用文件",
+        )
 
     return None, "未找到数据", datetime.min, "无可用源"
 
 
-# =================【5. 高性能数据清洗与标准化引擎】=================
-def normalize_card_series(series):
-    """向量化快速格式化卡号：剥离 .0 并向左补零到 4 位"""
-    if series is None or series.empty:
-        return pd.Series(dtype=str)
-    s = series.astype(str).str.strip()
-    s = s.str.replace(r"\.0$", "", regex=True)
-    return s.str[-4:].str.zfill(4)
-
-
-@st.cache_data(show_spinner=False, ttl=15)
+# =================【5. 高性能数据清洗与标准化引擎 (内存级缓存)】=================
+@st.cache_data(show_spinner=False, ttl=300)
 def load_and_clean_raw_cached(
     raw_source, dict_file_path, file_identifier, timestamp_val
 ):
-    """
-    通用清洗引擎：同时兼容 BytesIO 内存二进制流与本地文件路径
-    """
     df_raw = pd.DataFrame()
     try:
         excel_file = pd.ExcelFile(raw_source)
@@ -385,7 +374,7 @@ dict_status = (
 )
 
 st.caption(
-    f"📁 载入流水: `{current_filename}` ｜ 🕒 导出时间: **{mtime_str}** ｜ 📡 通道: `{source_channel}` ｜ 📖 字典: {dict_status}"
+    f"📁 载入流水: `{current_filename}` ｜ 🕒 导出时间: **{mtime_str}** ｜ 📡 通道: `{source_channel}` ｜ 📖 字典: {dict_status} ｜ ⚡ 极速缓存已就绪"
 )
 
 # ----------------------------------------------------
@@ -476,7 +465,7 @@ if selected_main_status and "交易状态" in df_main_filtered.columns:
     ]
 
 # ----------------------------------------------------
-# 顶部核心 KPI 指标卡 (4 列驾驶舱)
+# 顶部核心 KPI 指标卡 (原版 4 列驾驶舱)
 # ----------------------------------------------------
 latest_global_date = (
     df_raw["交易日期"].max() if "交易日期" in df_raw.columns else None
@@ -535,127 +524,6 @@ with k4:
         value=f"${complete_spend:,.2f}",
         help="当前筛选范围内已入账结算的 COMPLETE 金额",
     )
-
-# ----------------------------------------------------
-# 板块 0.5：🚨 拒付熔断监控雷达（DECLINED / FAILED 实时拦截）
-# ----------------------------------------------------
-if "交易状态" in df_raw.columns:
-    df_declined_all = df_raw[
-        df_raw["交易状态"]
-        .astype(str)
-        .str.upper()
-        .str.strip()
-        .isin(["DECLINED", "FAILED"])
-    ].copy()
-else:
-    df_declined_all = pd.DataFrame()
-
-total_dec_cnt = len(df_declined_all)
-today_dec_cnt = 0
-today_dec_sum = 0.0
-
-if not df_declined_all.empty:
-    if "交易日期" in df_declined_all.columns and latest_global_date:
-        df_today_dec = df_declined_all[
-            df_declined_all["交易日期"] == latest_global_date
-        ]
-        today_dec_cnt = len(df_today_dec)
-        today_dec_sum = (
-            df_today_dec["交易金额"].sum()
-            if "交易金额" in df_today_dec.columns
-            else 0.0
-        )
-
-    affected_cards_cnt = df_declined_all["卡号"].nunique()
-
-    with st.expander(
-        f"🚨 【Tim】拒付熔断监控雷达（💥 今日拒付: {today_dec_cnt} 笔 ｜ 累计拒付: {total_dec_cnt} 笔 ｜ 涉及 {affected_cards_cnt} 张卡）",
-        expanded=(today_dec_cnt > 0),
-    ):
-        if today_dec_cnt > 0:
-            st.error(
-                f"🚨 **严重风控警告**：今日已检测到 **{today_dec_cnt}** 笔扣款失败（DECLINED），金额共计 **${today_dec_sum:,.2f}**！"
-                f"涉及 **{df_today_dec['卡号'].nunique()}** 张卡。请立即通知对应 UA 补款或停户，防止 Meta 触发风控封户！"
-            )
-        else:
-            st.warning(
-                f"ℹ️ 历史累计检测到 **{total_dec_cnt}** 笔拒付记录（今日暂无新增拒付，运行平稳）。"
-            )
-
-        dec_col_scope, dec_col_ua = st.columns([1, 2])
-        with dec_col_scope:
-            dec_scope = st.radio(
-                "显示范围",
-                ["仅看今日拒付", "查看全部历史拒付"],
-                horizontal=True,
-                key="tim_dec_scope",
-            )
-        with dec_col_ua:
-            dec_ua_filter = st.multiselect(
-                "筛选责任 UA",
-                options=sorted(
-                    [
-                        str(x)
-                        for x in df_declined_all["UA名字"].dropna().unique()
-                        if str(x).strip() and str(x) != "nan"
-                    ]
-                ),
-                default=[],
-                placeholder="留空展示全部责任人",
-                key="tim_dec_ua_filter",
-            )
-
-        df_dec_show = df_declined_all.copy()
-        if (
-            dec_scope == "仅看今日拒付"
-            and latest_global_date
-            and "交易日期" in df_dec_show.columns
-        ):
-            df_dec_show = df_dec_show[
-                df_dec_show["交易日期"] == latest_global_date
-            ]
-        if dec_ua_filter:
-            df_dec_show = df_dec_show[df_dec_show["UA名字"].isin(dec_ua_filter)]
-
-        show_dec_cols = [
-            c
-            for c in [
-                "交易时间",
-                "交易日期",
-                "卡号",
-                "UA名字",
-                "交易金额",
-                "交易状态",
-            ]
-            if c in df_dec_show.columns
-        ]
-
-        sort_field = (
-            "交易时间" if "交易时间" in df_dec_show.columns else "交易日期"
-        )
-        st.dataframe(
-            df_dec_show[show_dec_cols].sort_values(
-                by=sort_field, ascending=False
-            ),
-            column_config={
-                "交易金额": st.column_config.NumberColumn(
-                    "💥 拒付金额", format="$%.2f"
-                ),
-                "交易状态": st.column_config.TextColumn("📌 状态"),
-                "卡号": st.column_config.TextColumn("💳 异常卡号"),
-                "UA名字": st.column_config.TextColumn("👤 责任 UA"),
-                "交易时间": st.column_config.DatetimeColumn(
-                    "🕒 发生时间", format="YYYY-MM-DD HH:mm:ss"
-                ),
-            },
-            hide_index=True,
-            use_container_width=True,
-        )
-else:
-    with st.expander(
-        "🛡️ 【Tim】拒付熔断监控雷达（🎉 0 笔拒付 ｜ 状态平稳）", expanded=False
-    ):
-        st.success("🎉 全绿通过：当前数据中未检测到任何 DECLINED 扣款失败记录！")
 
 # ----------------------------------------------------
 # 板块 1：中部趋势图表（柱状图 + 环形饼图）
@@ -1022,7 +890,10 @@ if not df_raw.empty:
         )
 
     with r_col3:
-        if "交易日期" in df_raw.columns and not df_raw["交易日期"].dropna().empty:
+        if (
+            "交易日期" in df_raw.columns
+            and not df_raw["交易日期"].dropna().empty
+        ):
             r_min_date = df_raw["交易日期"].min()
             r_max_date = df_raw["交易日期"].max()
             selected_raw_date_range = st.date_input(
