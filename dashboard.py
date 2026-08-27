@@ -26,9 +26,9 @@ st.markdown(
     @import url('https://unpkg.com/misans@4.0.0/lib/Medium/MiSans-Medium.min.css');
     @import url('https://unpkg.com/misans@4.0.0/lib/Semibold/MiSans-Semibold.min.css');
 
-    /* 1. 全局与全组件强制统一绑定 MiSans */
+    /* 1. 全局字体绑定（严格排除图标类，防止折叠箭头乱码） */
     html, body, [class*="css"], .stApp, 
-    h1, h2, h3, h4, h5, h6, p, span, div, label, input, button {
+    h1, h2, h3, h4, h5, h6, p, div:not([class*="icon"]), label, input, button {
         font-family: 'MiSans', 'Xiaomi Sans', 'Mi Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
         -webkit-font-smoothing: antialiased;
         color: #1d1d1f;
@@ -59,7 +59,7 @@ st.markdown(
         border-color: #d1d1d6 !important;
     }
 
-    /* 🌟 红框 1：指标卡顶部说明文字 (MiSans Medium 500) */
+    /* 指标卡顶部说明文字 */
     div[data-testid="stMetricLabel"],
     div[data-testid="stMetricLabel"] *,
     div[data-testid="stMetricLabel"] p,
@@ -73,7 +73,7 @@ st.markdown(
         margin-bottom: 4px !important;
     }
 
-    /* 指标卡金额大数值 (MiSans Semibold 600) */
+    /* 指标卡金额大数值 */
     div[data-testid="stMetricValue"],
     div[data-testid="stMetricValue"] *,
     div[data-testid="stMetricValue"] > div,
@@ -101,7 +101,7 @@ st.markdown(
         border: none !important;
     }
 
-    /* 🌟 红框 2 & 3：图表卡片自定义标题 (MiSans Semibold 600) */
+    /* 图表卡片自定义标题 */
     .chart-card-title {
         font-family: 'MiSans', 'Xiaomi Sans', sans-serif !important;
         font-size: 0.96rem !important;
@@ -114,7 +114,7 @@ st.markdown(
         gap: 6px;
     }
 
-    /* 4. 分段控制器 Tabs (MiSans) */
+    /* 4. 分段控制器 Tabs */
     div[data-baseweb="tab-list"] {
         background-color: #e5e5ea !important;
         padding: 4px !important;
@@ -570,7 +570,7 @@ if selected_main_status and "交易状态" in df_main_filtered.columns:
     ]
 
 # ----------------------------------------------------
-# 顶部核心 KPI 指标卡 (MiSans 字体)
+# 顶部核心 KPI 指标卡
 # ----------------------------------------------------
 latest_global_date = (
     df_raw["交易日期"].max() if "交易日期" in df_raw.columns else None
@@ -633,7 +633,7 @@ with k4:
 st.write("")
 
 # ----------------------------------------------------
-# 板块 1：中部趋势图表 (红框标题 + 图表文字全量同步 MiSans)
+# 板块 1：中部趋势图表
 # ----------------------------------------------------
 chart1, chart2 = st.columns(2)
 
