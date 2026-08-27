@@ -55,7 +55,6 @@ st.markdown(
         border-color: #d1d1d6 !important;
     }
 
-    /* 🌟 深度击穿 Label：中英文舒展字距 */
     div[data-testid="stMetricLabel"],
     div[data-testid="stMetricLabel"] *,
     div[data-testid="stMetricLabel"] p {
@@ -63,12 +62,11 @@ st.markdown(
         font-size: 0.83rem !important;
         font-weight: 500 !important;
         color: #86868b !important;
-        letter-spacing: 0.06em !important; /* 增加中英文混排清晰度 */
+        letter-spacing: 0.06em !important;
         line-height: 1.3 !important;
         margin-bottom: 4px !important;
     }
 
-    /* 🌟 深度击穿 Value：强制开启物理级宽字距，彻底解决数字粘连 */
     div[data-testid="stMetricValue"],
     div[data-testid="stMetricValue"] *,
     div[data-testid="stMetricValue"] > div,
@@ -78,12 +76,12 @@ st.markdown(
         font-weight: 600 !important;
         color: #1d1d1f !important;
         line-height: 1.15 !important;
-        letter-spacing: 1.2px !important; /* 强制字符间留白 1.2 像素 */
+        letter-spacing: 1.2px !important;
         word-spacing: 2px !important;
         font-feature-settings: "tnum" 1 !important;
     }
 
-    /* 3. 统一卡片容器 (标题与图表完美合一的 18px 圆角白卡) */
+    /* 3. 统一卡片容器 (18px 圆角白卡) */
     [data-testid="stVerticalBlockBorderWrapper"] {
         background: #ffffff !important;
         border: 1px solid #e5e5ea !important;
@@ -96,30 +94,49 @@ st.markdown(
         border: none !important;
     }
 
-    /* 4. 分段控制器 Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2px !important;
-        background-color: rgba(120, 120, 128, 0.12) !important;
-        padding: 3px !important;
-        border-radius: 11px !important;
-        border: none !important;
+    /* 4. 🌟 彻底重塑 Tabs 胶囊分段器（消除直角大边框与下划线） */
+    div[data-baseweb="tab-list"] {
+        background-color: #e5e5ea !important;
+        padding: 4px !important;
+        border-radius: 12px !important;
+        gap: 3px !important;
+        border-bottom: none !important;
+        display: inline-flex !important;
+        width: fit-content !important;
+        max-width: 100% !important;
+        margin-bottom: 4px !important;
     }
-    .stTabs [data-baseweb="tab"] {
+    /* 彻底拔除 Streamlit 默认的灰色底线与蓝色下划线 */
+    div[data-baseweb="tab-border"],
+    div[data-baseweb="tab-highlight"] {
+        display: none !important;
+    }
+    button[data-baseweb="tab"] {
         border-radius: 9px !important;
-        padding: 6px 16px !important;
-        font-size: 0.85rem !important;
+        padding: 6px 14px !important;
+        font-size: 0.84rem !important;
         font-weight: 500 !important;
         color: #636366 !important;
         border: none !important;
         background-color: transparent !important;
+        height: auto !important;
+        margin: 0 !important;
         letter-spacing: 0.02em !important;
         transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1) !important;
     }
-    .stTabs [aria-selected="true"] {
+    button[data-baseweb="tab"]:hover {
+        color: #1d1d1f !important;
+        background-color: rgba(255, 255, 255, 0.4) !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
         background-color: #ffffff !important;
-        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
         color: #1d1d1f !important;
         font-weight: 600 !important;
+    }
+    /* 紧凑化 Tabs 与下方表格的间隙 */
+    div[data-testid="stTabs"] div[role="tabpanel"] {
+        padding-top: 6px !important;
     }
 
     /* 5. 筛选折叠面板 */
@@ -138,7 +155,14 @@ st.markdown(
         overflow: hidden !important;
     }
 
-    /* 7. 手机端自适应 */
+    /* 7. 按钮精修 */
+    .stButton > button {
+        border-radius: 11px !important;
+        font-family: 'MiSans', sans-serif !important;
+        font-weight: 500 !important;
+    }
+
+    /* 8. 手机端自适应 */
     @media (max-width: 768px) {
         .main .block-container {
             padding-left: 0.6rem !important;
@@ -427,7 +451,7 @@ with st.sidebar:
         )
 
     st.markdown("---")
-    st.caption("MiSans Typography ｜ White 制作")
+    st.caption("Design by White")
 
 
 # =================【8. 主页面渲染】=================
@@ -534,7 +558,7 @@ if selected_main_status and "交易状态" in df_main_filtered.columns:
     ]
 
 # ----------------------------------------------------
-# 顶部核心 KPI 指标卡 (深度穿透，字距自适应)
+# 顶部核心 KPI 指标卡
 # ----------------------------------------------------
 latest_global_date = (
     df_raw["交易日期"].max() if "交易日期" in df_raw.columns else None
@@ -597,7 +621,7 @@ with k4:
 st.write("")
 
 # ----------------------------------------------------
-# 板块 1：中部趋势图表 (18px 圆角纯白卡片底座)
+# 板块 1：中部趋势图表
 # ----------------------------------------------------
 chart1, chart2 = st.columns(2)
 
