@@ -21,14 +21,14 @@ BEIJING_TZ = timezone(timedelta(hours=8))
 st.markdown(
     """
     <style>
-    /* ================= 📱 小米 MiSans 字体系统 ================= */
-    @import url('https://cdn.jsdelivr.net/npm/misans@4.0.0/lib/Normal/MiSans-Normal.min.css');
-    @import url('https://cdn.jsdelivr.net/npm/misans@4.0.0/lib/Medium/MiSans-Medium.min.css');
-    @import url('https://cdn.jsdelivr.net/npm/misans@4.0.0/lib/Semibold/MiSans-Semibold.min.css');
+    /* 引入国内高速镜像 MiSans 字体 */
+    @import url('https://unpkg.com/misans@4.0.0/lib/Normal/MiSans-Normal.min.css');
+    @import url('https://unpkg.com/misans@4.0.0/lib/Medium/MiSans-Medium.min.css');
+    @import url('https://unpkg.com/misans@4.0.0/lib/Semibold/MiSans-Semibold.min.css');
 
-    /* 1. 画布底色与全局字体绑定 */
+    /* 1. 画布底色与全平台高质感字体族 */
     html, body, [class*="css"], .stApp {
-        font-family: 'MiSans', 'Mi Sans', 'Xiaomi Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+        font-family: 'MiSans', 'Xiaomi Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif !important;
         -webkit-font-smoothing: antialiased;
         color: #1d1d1f;
         background-color: #f5f5f7 !important;
@@ -40,8 +40,8 @@ st.markdown(
         max-width: 96% !important;
     }
 
-    /* 2. 核心指标卡片 (精修字距与等宽排版) */
-    [data-testid="stMetric"] {
+    /* 2. 核心指标卡片 (18px 圆角卡片底座) */
+    div[data-testid="stMetric"] {
         background: #ffffff !important;
         border: 1px solid #e5e5ea !important;
         border-radius: 18px !important;
@@ -49,32 +49,41 @@ st.markdown(
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03) !important;
         transition: all 0.25s cubic-bezier(0.25, 1, 0.5, 1) !important;
     }
-    [data-testid="stMetric"]:hover {
+    div[data-testid="stMetric"]:hover {
         transform: translateY(-2px);
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06) !important;
         border-color: #d1d1d6 !important;
     }
-    /* 顶部说明文字：增加中英文混排呼吸感 */
-    [data-testid="stMetricLabel"] {
-        font-size: 0.82rem !important;
+
+    /* 🌟 深度击穿 Label：中英文舒展字距 */
+    div[data-testid="stMetricLabel"],
+    div[data-testid="stMetricLabel"] *,
+    div[data-testid="stMetricLabel"] p {
+        font-family: 'MiSans', 'Xiaomi Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif !important;
+        font-size: 0.83rem !important;
         font-weight: 500 !important;
         color: #86868b !important;
-        letter-spacing: 0.035em !important;
+        letter-spacing: 0.06em !important; /* 增加中英文混排清晰度 */
         line-height: 1.3 !important;
-        margin-bottom: 6px !important;
+        margin-bottom: 4px !important;
     }
-    /* 核心金额数值：消除紧迫负字距，开启等宽特性 */
-    [data-testid="stMetricValue"] {
-        font-size: 1.62rem !important;
+
+    /* 🌟 深度击穿 Value：强制开启物理级宽字距，彻底解决数字粘连 */
+    div[data-testid="stMetricValue"],
+    div[data-testid="stMetricValue"] *,
+    div[data-testid="stMetricValue"] > div,
+    div[data-testid="stMetricValue"] span {
+        font-family: 'MiSans', 'Xiaomi Sans', -apple-system, 'SF Pro Display', 'Segoe UI', sans-serif !important;
+        font-size: 1.58rem !important;
         font-weight: 600 !important;
         color: #1d1d1f !important;
         line-height: 1.15 !important;
-        letter-spacing: -0.01em !important;
-        font-variant-numeric: tabular-nums !important;
-        font-feature-settings: "tnum" 1, "cv01" 1 !important;
+        letter-spacing: 1.2px !important; /* 强制字符间留白 1.2 像素 */
+        word-spacing: 2px !important;
+        font-feature-settings: "tnum" 1 !important;
     }
 
-    /* 3. Streamlit 原生卡片容器改造 (标题与图表合一的 18px 圆角白卡) */
+    /* 3. 统一卡片容器 (标题与图表完美合一的 18px 圆角白卡) */
     [data-testid="stVerticalBlockBorderWrapper"] {
         background: #ffffff !important;
         border: 1px solid #e5e5ea !important;
@@ -103,6 +112,7 @@ st.markdown(
         color: #636366 !important;
         border: none !important;
         background-color: transparent !important;
+        letter-spacing: 0.02em !important;
         transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1) !important;
     }
     .stTabs [aria-selected="true"] {
@@ -128,26 +138,21 @@ st.markdown(
         overflow: hidden !important;
     }
 
-    /* 7. 按钮精修 */
-    .stButton > button {
-        border-radius: 11px !important;
-        font-family: 'MiSans', sans-serif !important;
-        font-weight: 500 !important;
-    }
-
-    /* 8. 手机端自适应 */
+    /* 7. 手机端自适应 */
     @media (max-width: 768px) {
         .main .block-container {
             padding-left: 0.6rem !important;
             padding-right: 0.6rem !important;
             padding-top: 0.8rem !important;
         }
-        [data-testid="stMetric"] {
+        div[data-testid="stMetric"] {
             padding: 10px 12px !important;
             margin-bottom: 6px !important;
         }
-        [data-testid="stMetricValue"] {
-            font-size: 1.22rem !important;
+        div[data-testid="stMetricValue"],
+        div[data-testid="stMetricValue"] * {
+            font-size: 1.18rem !important;
+            letter-spacing: 0.8px !important;
         }
         div[data-testid="column"] {
             min-width: 100% !important;
@@ -529,7 +534,7 @@ if selected_main_status and "交易状态" in df_main_filtered.columns:
     ]
 
 # ----------------------------------------------------
-# 顶部核心 KPI 指标卡 (MiSans 字体 + 字间距精修)
+# 顶部核心 KPI 指标卡 (深度穿透，字距自适应)
 # ----------------------------------------------------
 latest_global_date = (
     df_raw["交易日期"].max() if "交易日期" in df_raw.columns else None
@@ -592,13 +597,13 @@ with k4:
 st.write("")
 
 # ----------------------------------------------------
-# 板块 1：中部趋势图表 (MiSans 字体 + 18px 圆角白卡容器)
+# 板块 1：中部趋势图表 (18px 圆角纯白卡片底座)
 # ----------------------------------------------------
 chart1, chart2 = st.columns(2)
 
 with chart1:
     with st.container(border=True):
-        st.markdown("<p style='font-size: 0.95rem; font-weight: 600; color: #1d1d1f; margin-bottom: 0px;'>📅 每日消耗与状态趋势</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size: 0.95rem; font-weight: 600; color: #1d1d1f; letter-spacing: 0.02em; margin-bottom: 0px;'>📅 每日消耗与状态趋势</p>", unsafe_allow_html=True)
         if (
             "交易日期" in df_main_filtered.columns
             and "交易金额" in df_main_filtered.columns
@@ -625,7 +630,7 @@ with chart1:
                 },
             )
             fig_trend.update_layout(
-                font_family="MiSans, Mi Sans, sans-serif",
+                font_family="MiSans, sans-serif",
                 showlegend=True,
                 legend_title_text="",
                 dragmode=False,
@@ -662,7 +667,7 @@ with chart1:
 
 with chart2:
     with st.container(border=True):
-        st.markdown("<p style='font-size: 0.95rem; font-weight: 600; color: #1d1d1f; margin-bottom: 0px;'>🎯 投放团队 PENDING 消耗占比</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size: 0.95rem; font-weight: 600; color: #1d1d1f; letter-spacing: 0.02em; margin-bottom: 0px;'>🎯 投放团队 PENDING 消耗占比</p>", unsafe_allow_html=True)
         if (
             "UA名字" in df_main_filtered.columns
             and "交易金额" in df_main_filtered.columns
@@ -698,7 +703,7 @@ with chart2:
                 marker=dict(line=dict(color="#ffffff", width=2.5))
             )
             fig_ua.update_layout(
-                font_family="MiSans, Mi Sans, sans-serif",
+                font_family="MiSans, sans-serif",
                 dragmode=False,
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
