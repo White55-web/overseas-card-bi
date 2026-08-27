@@ -7,7 +7,7 @@ import plotly.express as px
 import requests
 import streamlit as st
 
-# =================【1. 页面基本配置与 MiSans 系统 UI】=================
+# =================【1. 页面基本配置与 MiSans 统一系统 UI】=================
 st.set_page_config(
     page_title="Tim 卡台数据看板",
     page_icon="⚡",
@@ -21,26 +21,30 @@ BEIJING_TZ = timezone(timedelta(hours=8))
 st.markdown(
     """
     <style>
-    /* 引入国内高速镜像 MiSans 字体 */
+    /* 引入国内高速 MiSans 字体全字阶 */
     @import url('https://unpkg.com/misans@4.0.0/lib/Normal/MiSans-Normal.min.css');
     @import url('https://unpkg.com/misans@4.0.0/lib/Medium/MiSans-Medium.min.css');
     @import url('https://unpkg.com/misans@4.0.0/lib/Semibold/MiSans-Semibold.min.css');
 
-    /* 1. 画布底色与全平台高质感字体族 */
-    html, body, [class*="css"], .stApp {
-        font-family: 'MiSans', 'Xiaomi Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif !important;
+    /* 1. 全局与全组件强制统一绑定 MiSans */
+    html, body, [class*="css"], .stApp, 
+    h1, h2, h3, h4, h5, h6, p, span, div, label, input, button {
+        font-family: 'MiSans', 'Xiaomi Sans', 'Mi Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
         -webkit-font-smoothing: antialiased;
         color: #1d1d1f;
-        background-color: #f5f5f7 !important;
     }
     
+    .stApp {
+        background-color: #f5f5f7 !important;
+    }
+
     .main .block-container {
         padding-top: 1.4rem !important;
         padding-bottom: 3.5rem !important;
         max-width: 96% !important;
     }
 
-    /* 2. 核心指标卡片 (18px 圆角卡片底座) */
+    /* 2. 核心指标卡片 (18px 圆角卡片) */
     div[data-testid="stMetric"] {
         background: #ffffff !important;
         border: 1px solid #e5e5ea !important;
@@ -55,23 +59,26 @@ st.markdown(
         border-color: #d1d1d6 !important;
     }
 
+    /* 🌟 红框 1：指标卡顶部说明文字 (MiSans Medium 500) */
     div[data-testid="stMetricLabel"],
     div[data-testid="stMetricLabel"] *,
-    div[data-testid="stMetricLabel"] p {
-        font-family: 'MiSans', 'Xiaomi Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif !important;
-        font-size: 0.83rem !important;
+    div[data-testid="stMetricLabel"] p,
+    div[data-testid="stMetricLabel"] span {
+        font-family: 'MiSans', 'Xiaomi Sans', sans-serif !important;
+        font-size: 0.82rem !important;
         font-weight: 500 !important;
         color: #86868b !important;
-        letter-spacing: 0.06em !important;
+        letter-spacing: 0.04em !important;
         line-height: 1.3 !important;
         margin-bottom: 4px !important;
     }
 
+    /* 指标卡金额大数值 (MiSans Semibold 600) */
     div[data-testid="stMetricValue"],
     div[data-testid="stMetricValue"] *,
     div[data-testid="stMetricValue"] > div,
     div[data-testid="stMetricValue"] span {
-        font-family: 'MiSans', 'Xiaomi Sans', -apple-system, 'SF Pro Display', 'Segoe UI', sans-serif !important;
+        font-family: 'MiSans', 'Xiaomi Sans', sans-serif !important;
         font-size: 1.58rem !important;
         font-weight: 600 !important;
         color: #1d1d1f !important;
@@ -94,7 +101,20 @@ st.markdown(
         border: none !important;
     }
 
-    /* 4. 🌟 彻底重塑 Tabs 胶囊分段器（消除直角大边框与下划线） */
+    /* 🌟 红框 2 & 3：图表卡片自定义标题 (MiSans Semibold 600) */
+    .chart-card-title {
+        font-family: 'MiSans', 'Xiaomi Sans', sans-serif !important;
+        font-size: 0.96rem !important;
+        font-weight: 600 !important;
+        color: #1d1d1f !important;
+        letter-spacing: 0.02em !important;
+        margin-bottom: 0px !important;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    /* 4. 分段控制器 Tabs (MiSans) */
     div[data-baseweb="tab-list"] {
         background-color: #e5e5ea !important;
         padding: 4px !important;
@@ -106,12 +126,12 @@ st.markdown(
         max-width: 100% !important;
         margin-bottom: 4px !important;
     }
-    /* 彻底拔除 Streamlit 默认的灰色底线与蓝色下划线 */
     div[data-baseweb="tab-border"],
     div[data-baseweb="tab-highlight"] {
         display: none !important;
     }
     button[data-baseweb="tab"] {
+        font-family: 'MiSans', 'Xiaomi Sans', sans-serif !important;
         border-radius: 9px !important;
         padding: 6px 14px !important;
         font-size: 0.84rem !important;
@@ -134,7 +154,6 @@ st.markdown(
         color: #1d1d1f !important;
         font-weight: 600 !important;
     }
-    /* 紧凑化 Tabs 与下方表格的间隙 */
     div[data-testid="stTabs"] div[role="tabpanel"] {
         padding-top: 6px !important;
     }
@@ -155,14 +174,7 @@ st.markdown(
         overflow: hidden !important;
     }
 
-    /* 7. 按钮精修 */
-    .stButton > button {
-        border-radius: 11px !important;
-        font-family: 'MiSans', sans-serif !important;
-        font-weight: 500 !important;
-    }
-
-    /* 8. 手机端自适应 */
+    /* 7. 手机端自适应 */
     @media (max-width: 768px) {
         .main .block-container {
             padding-left: 0.6rem !important;
@@ -558,7 +570,7 @@ if selected_main_status and "交易状态" in df_main_filtered.columns:
     ]
 
 # ----------------------------------------------------
-# 顶部核心 KPI 指标卡
+# 顶部核心 KPI 指标卡 (MiSans 字体)
 # ----------------------------------------------------
 latest_global_date = (
     df_raw["交易日期"].max() if "交易日期" in df_raw.columns else None
@@ -621,13 +633,13 @@ with k4:
 st.write("")
 
 # ----------------------------------------------------
-# 板块 1：中部趋势图表
+# 板块 1：中部趋势图表 (红框标题 + 图表文字全量同步 MiSans)
 # ----------------------------------------------------
 chart1, chart2 = st.columns(2)
 
 with chart1:
     with st.container(border=True):
-        st.markdown("<p style='font-size: 0.95rem; font-weight: 600; color: #1d1d1f; letter-spacing: 0.02em; margin-bottom: 0px;'>📅 每日消耗与状态趋势</p>", unsafe_allow_html=True)
+        st.markdown('<div class="chart-card-title">📅 每日消耗与状态趋势</div>', unsafe_allow_html=True)
         if (
             "交易日期" in df_main_filtered.columns
             and "交易金额" in df_main_filtered.columns
@@ -654,20 +666,20 @@ with chart1:
                 },
             )
             fig_trend.update_layout(
-                font_family="MiSans, sans-serif",
+                font=dict(family="MiSans, Xiaomi Sans, sans-serif"),
                 showlegend=True,
                 legend_title_text="",
                 dragmode=False,
                 xaxis=dict(
                     fixedrange=True, 
                     showgrid=False,
-                    tickfont=dict(family="MiSans, sans-serif", color="#86868b", size=11),
+                    tickfont=dict(family="MiSans, Xiaomi Sans, sans-serif", color="#86868b", size=11),
                     title=None
                 ),
                 yaxis=dict(
                     fixedrange=True, 
                     gridcolor="#f2f2f7",
-                    tickfont=dict(family="MiSans, sans-serif", color="#86868b", size=11),
+                    tickfont=dict(family="MiSans, Xiaomi Sans, sans-serif", color="#86868b", size=11),
                     title=None
                 ),
                 plot_bgcolor="rgba(0,0,0,0)",
@@ -678,7 +690,7 @@ with chart1:
                     y=-0.12,
                     xanchor="center",
                     x=0.5,
-                    font=dict(family="MiSans, sans-serif", size=11, color="#636366")
+                    font=dict(family="MiSans, Xiaomi Sans, sans-serif", size=11, color="#636366")
                 ),
                 margin=dict(l=0, r=0, t=10, b=35),
                 hovermode="x unified",
@@ -691,7 +703,7 @@ with chart1:
 
 with chart2:
     with st.container(border=True):
-        st.markdown("<p style='font-size: 0.95rem; font-weight: 600; color: #1d1d1f; letter-spacing: 0.02em; margin-bottom: 0px;'>🎯 投放团队 PENDING 消耗占比</p>", unsafe_allow_html=True)
+        st.markdown('<div class="chart-card-title">🎯 投放团队 PENDING 消耗占比</div>', unsafe_allow_html=True)
         if (
             "UA名字" in df_main_filtered.columns
             and "交易金额" in df_main_filtered.columns
@@ -723,11 +735,11 @@ with chart2:
             fig_ua.update_traces(
                 textposition="inside", 
                 textinfo="percent+label",
-                textfont=dict(family="MiSans, sans-serif"),
+                textfont=dict(family="MiSans, Xiaomi Sans, sans-serif"),
                 marker=dict(line=dict(color="#ffffff", width=2.5))
             )
             fig_ua.update_layout(
-                font_family="MiSans, sans-serif",
+                font=dict(family="MiSans, Xiaomi Sans, sans-serif"),
                 dragmode=False,
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -737,7 +749,7 @@ with chart2:
                     y=-0.12,
                     xanchor="center",
                     x=0.5,
-                    font=dict(family="MiSans, sans-serif", size=11, color="#636366")
+                    font=dict(family="MiSans, Xiaomi Sans, sans-serif", size=11, color="#636366")
                 ),
                 margin=dict(l=0, r=0, t=10, b=35),
             )
