@@ -633,7 +633,7 @@ with k4:
 st.write("")
 
 # ----------------------------------------------------
-# 板块 1：中部趋势图表 (应用方案三：高级同色系蓝紫渐变风饼图)
+# 板块 1：中部趋势图表 (应用方案二：横向条形排名风)
 # ----------------------------------------------------
 chart1, chart2 = st.columns(2)
 
@@ -718,44 +718,44 @@ with chart2:
                 df_pending_chart.groupby("UA名字")["交易金额"]
                 .sum()
                 .reset_index()
-                .sort_values(by="交易金额", ascending=False)
+                .sort_values(by="交易金额", ascending=True)  # 升序排列，使最大值排在最上方
             )
             
-            # 🌟 方案三：高级同色系蓝紫渐变色阶（从专业深蓝、电光蓝、柔和靛紫无缝过渡到冷灰钛色）
-            cohesive_gradient_colors = [
-                "#0051D5", "#0071E3", "#227BFF", "#408CFF", 
-                "#5E5CE6", "#7A52C7", "#9333EA", "#0284C7", 
-                "#0EA5E9", "#38BDF8", "#64748B", "#94A3B8", "#CBD5E1"
-            ]
-            
-            fig_ua = px.pie(
+            # 🌟 方案二：横向条形排名风（现代 iOS 风格圆角条形）
+            fig_ua = px.bar(
                 ua_data,
-                names="UA名字",
-                values="交易金额",
-                hole=0.60,
+                x="交易金额",
+                y="UA名字",
+                orientation="h",
                 template="plotly_white",
-                color_discrete_sequence=cohesive_gradient_colors,
             )
             fig_ua.update_traces(
-                textposition="inside", 
-                textinfo="percent+label",
-                textfont=dict(family="MiSans, Xiaomi Sans, sans-serif"),
-                marker=dict(line=dict(color="#ffffff", width=2.5))
+                marker_color="#0071E3",
+                marker=dict(cornerradius=6),
+                texttemplate="$%{x:,.2f}",
+                textposition="outside",
+                textfont=dict(family="MiSans, Xiaomi Sans, sans-serif", size=11, color="#636366")
             )
             fig_ua.update_layout(
                 font=dict(family="MiSans, Xiaomi Sans, sans-serif"),
                 dragmode=False,
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
-                legend=dict(
-                    orientation="h",
-                    yanchor="top",
-                    y=-0.12,
-                    xanchor="center",
-                    x=0.5,
-                    font=dict(family="MiSans, Xiaomi Sans, sans-serif", size=11, color="#636366")
+                xaxis=dict(
+                    fixedrange=True,
+                    showgrid=True,
+                    gridcolor="#f2f2f7",
+                    tickfont=dict(family="MiSans, Xiaomi Sans, sans-serif", color="#86868b", size=11),
+                    title=None,
+                    tickprefix="$"
                 ),
-                margin=dict(l=0, r=0, t=10, b=35),
+                yaxis=dict(
+                    fixedrange=True,
+                    showgrid=False,
+                    tickfont=dict(family="MiSans, Xiaomi Sans, sans-serif", color="#1d1d1f", size=12),
+                    title=None
+                ),
+                margin=dict(l=10, r=60, t=10, b=10),
             )
             st.plotly_chart(
                 fig_ua,
