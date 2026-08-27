@@ -158,12 +158,21 @@ st.markdown(
         padding-top: 6px !important;
     }
 
-    /* 5. 筛选折叠面板 */
+    /* 5. 🌟 筛选折叠面板（彻底解决双重圆角与左侧毛刺瑕疵） */
     [data-testid="stExpander"] {
         background: #ffffff !important;
         border: 1px solid #e5e5ea !important;
         border-radius: 18px !important;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02) !important;
+        overflow: hidden !important;
+    }
+    [data-testid="stExpander"] details {
+        border: none !important;
+        border-radius: 18px !important;
+        overflow: hidden !important;
+    }
+    [data-testid="stExpander"] summary {
+        border-radius: 18px !important;
     }
     
     /* 6. 表格卡片化 */
@@ -734,7 +743,7 @@ with chart2:
                 texttemplate="$%{x:,.2f}",
                 textposition="outside",
                 textfont=dict(family="MiSans, Xiaomi Sans, sans-serif", size=11, color="#636366"),
-                cliponaxis=False  # 🌟 关键：防止超出边缘的文字被裁剪切断
+                cliponaxis=False
             )
             fig_ua.update_layout(
                 font=dict(family="MiSans, Xiaomi Sans, sans-serif"),
@@ -755,7 +764,7 @@ with chart2:
                     tickfont=dict(family="MiSans, Xiaomi Sans, sans-serif", color="#1d1d1f", size=12),
                     title=None
                 ),
-                margin=dict(l=10, r=110, t=10, b=10),  # 🌟 扩大右侧边距至 110，提供充足空间
+                margin=dict(l=10, r=110, t=10, b=10),
             )
             st.plotly_chart(
                 fig_ua,
