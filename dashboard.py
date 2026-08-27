@@ -40,12 +40,12 @@ st.markdown(
         max-width: 96% !important;
     }
 
-    /* 2. 核心指标卡片 (18px 圆角白卡) */
+    /* 2. 核心指标卡片 (精修字距与等宽排版) */
     [data-testid="stMetric"] {
         background: #ffffff !important;
         border: 1px solid #e5e5ea !important;
         border-radius: 18px !important;
-        padding: 16px 20px !important;
+        padding: 16px 20px 14px 20px !important;
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03) !important;
         transition: all 0.25s cubic-bezier(0.25, 1, 0.5, 1) !important;
     }
@@ -54,22 +54,27 @@ st.markdown(
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06) !important;
         border-color: #d1d1d6 !important;
     }
+    /* 顶部说明文字：增加中英文混排呼吸感 */
     [data-testid="stMetricLabel"] {
         font-size: 0.82rem !important;
         font-weight: 500 !important;
         color: #86868b !important;
-        letter-spacing: -0.01em !important;
-        margin-bottom: 4px !important;
+        letter-spacing: 0.035em !important;
+        line-height: 1.3 !important;
+        margin-bottom: 6px !important;
     }
+    /* 核心金额数值：消除紧迫负字距，开启等宽特性 */
     [data-testid="stMetricValue"] {
-        font-size: 1.65rem !important;
+        font-size: 1.62rem !important;
         font-weight: 600 !important;
         color: #1d1d1f !important;
-        letter-spacing: -0.03em !important;
+        line-height: 1.15 !important;
+        letter-spacing: -0.01em !important;
         font-variant-numeric: tabular-nums !important;
+        font-feature-settings: "tnum" 1, "cv01" 1 !important;
     }
 
-    /* 3. Streamlit 原生卡片容器改造 (标题与图表合一的 18px 圆角卡片) */
+    /* 3. Streamlit 原生卡片容器改造 (标题与图表合一的 18px 圆角白卡) */
     [data-testid="stVerticalBlockBorderWrapper"] {
         background: #ffffff !important;
         border: 1px solid #e5e5ea !important;
@@ -524,7 +529,7 @@ if selected_main_status and "交易状态" in df_main_filtered.columns:
     ]
 
 # ----------------------------------------------------
-# 顶部核心 KPI 指标卡 (MiSans 字体)
+# 顶部核心 KPI 指标卡 (MiSans 字体 + 字间距精修)
 # ----------------------------------------------------
 latest_global_date = (
     df_raw["交易日期"].max() if "交易日期" in df_raw.columns else None
@@ -587,7 +592,7 @@ with k4:
 st.write("")
 
 # ----------------------------------------------------
-# 板块 1：中部趋势图表 (MiSans 字体 + 18px 圆角卡片)
+# 板块 1：中部趋势图表 (MiSans 字体 + 18px 圆角白卡容器)
 # ----------------------------------------------------
 chart1, chart2 = st.columns(2)
 
