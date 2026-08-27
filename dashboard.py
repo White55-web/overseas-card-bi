@@ -633,7 +633,7 @@ with k4:
 st.write("")
 
 # ----------------------------------------------------
-# 板块 1：中部趋势图表 (应用方案二：横向条形排名风)
+# 板块 1：中部趋势图表
 # ----------------------------------------------------
 chart1, chart2 = st.columns(2)
 
@@ -718,10 +718,9 @@ with chart2:
                 df_pending_chart.groupby("UA名字")["交易金额"]
                 .sum()
                 .reset_index()
-                .sort_values(by="交易金额", ascending=True)  # 升序排列，使最大值排在最上方
+                .sort_values(by="交易金额", ascending=True)
             )
             
-            # 🌟 方案二：横向条形排名风（现代 iOS 风格圆角条形）
             fig_ua = px.bar(
                 ua_data,
                 x="交易金额",
@@ -734,7 +733,8 @@ with chart2:
                 marker=dict(cornerradius=6),
                 texttemplate="$%{x:,.2f}",
                 textposition="outside",
-                textfont=dict(family="MiSans, Xiaomi Sans, sans-serif", size=11, color="#636366")
+                textfont=dict(family="MiSans, Xiaomi Sans, sans-serif", size=11, color="#636366"),
+                cliponaxis=False  # 🌟 关键：防止超出边缘的文字被裁剪切断
             )
             fig_ua.update_layout(
                 font=dict(family="MiSans, Xiaomi Sans, sans-serif"),
@@ -755,7 +755,7 @@ with chart2:
                     tickfont=dict(family="MiSans, Xiaomi Sans, sans-serif", color="#1d1d1f", size=12),
                     title=None
                 ),
-                margin=dict(l=10, r=60, t=10, b=10),
+                margin=dict(l=10, r=110, t=10, b=10),  # 🌟 扩大右侧边距至 110，提供充足空间
             )
             st.plotly_chart(
                 fig_ua,
