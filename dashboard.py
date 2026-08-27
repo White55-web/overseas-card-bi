@@ -633,7 +633,7 @@ with k4:
 st.write("")
 
 # ----------------------------------------------------
-# 板块 1：中部趋势图表
+# 板块 1：中部趋势图表 (应用方案三：高级同色系蓝紫渐变风饼图)
 # ----------------------------------------------------
 chart1, chart2 = st.columns(2)
 
@@ -720,17 +720,21 @@ with chart2:
                 .reset_index()
                 .sort_values(by="交易金额", ascending=False)
             )
-            apple_pie_colors = [
-                "#0071E3", "#5E5CE6", "#AF52DE", "#FF2D55", 
-                "#FF9500", "#FFCC00", "#34C759", "#5AC8FA", "#8E8E93"
+            
+            # 🌟 方案三：高级同色系蓝紫渐变色阶（从专业深蓝、电光蓝、柔和靛紫无缝过渡到冷灰钛色）
+            cohesive_gradient_colors = [
+                "#0051D5", "#0071E3", "#227BFF", "#408CFF", 
+                "#5E5CE6", "#7A52C7", "#9333EA", "#0284C7", 
+                "#0EA5E9", "#38BDF8", "#64748B", "#94A3B8", "#CBD5E1"
             ]
+            
             fig_ua = px.pie(
                 ua_data,
                 names="UA名字",
                 values="交易金额",
                 hole=0.60,
                 template="plotly_white",
-                color_discrete_sequence=apple_pie_colors,
+                color_discrete_sequence=cohesive_gradient_colors,
             )
             fig_ua.update_traces(
                 textposition="inside", 
